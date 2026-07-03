@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.DS_Store
+handoff
+*.zip
+.vercel
+.env*
+!.env.example
+*.tsbuildinfo

@@ -1,0 +1,75 @@
+* { box-sizing: border-box; }
+body { margin: 0; }
+
+.fa-scroll::-webkit-scrollbar { height: 9px; width: 9px; }
+.fa-scroll::-webkit-scrollbar-thumb { background: #D8CDB8; border-radius: 9px; }
+
+@media (max-width: 760px) {
+  .fa-root main { padding: 18px 14px 56px !important; }
+  .fa-root > header > div:first-child { padding: 12px 14px !important; gap: 10px !important; }
+  .fa-root h1 { font-size: 20px !important; }
+  .fa-hide-sm { display: none !important; }
+  .fa-tot { font-size: 18px !important; }
+  .fa-detail-amt { font-size: 27px !important; }
+  .fa-header-stats { gap: 12px !important; }
+}
+
+.fa-print-only { display: none; }
+
+/* ===== THEME PALETTES ===== */
+.fa-root {
+  --bg:#F4EFE6; --surface:#FBF8F1; --surface2:#FFFFFF; --inset:#F1EDE2; --inset2:#F8F5EE;
+  --border:#E8E0CF; --border2:#E2D9C8; --text:#2C2A23; --ink:#3C4A33; --muted:#9A917F; --muted2:#6B6356;
+  --accent:#5E7350; --accent-ink:#5E7350; --accent-soft:#EEF2E8; --on-accent:#FBF8F1; --brand-deep:#3C4A33;
+  --p-gold-bg:#FBF4DF; --p-gold-bd:#ECDBA8; --p-gold-ink:#8A6A12;
+  --p-blue-bg:#EEF3FA; --p-blue-bd:#CFE0F0; --p-blue-ink:#2456A8;
+  --p-brown-bg:#F4F0E8; --p-brown-bd:#E0D5C0; --p-brown-ink:#7A5A26;
+  --p-purple-bg:#F3EEF7; --p-purple-bd:#DDCFE8; --p-purple-ink:#6A4A8A;
+  --p-green-bg:#E9F1E6; --p-green-bd:#BFE3CC; --p-red-bg:#FBEAE8; --p-red-bd:#F0CFCB;
+  transition: background 0.25s, color 0.25s;
+}
+.fa-root[data-theme="dark"] {
+  --bg:#15191F; --surface:#1E242C; --surface2:#272E37; --inset:#2A323B; --inset2:#252C34;
+  --border:#333C46; --border2:#3A434E; --text:#E7EBF0; --ink:#CDE3CC; --muted:#929BA8; --muted2:#B4BBC5;
+  --accent:#4F7D63; --accent-ink:#82BE9C; --accent-soft:#22301F; --on-accent:#F4F7F3; --brand-deep:#243528;
+  --p-gold-bg:#2C2719; --p-gold-bd:#4A4326; --p-gold-ink:#E0B84A;
+  --p-blue-bg:#1B2630; --p-blue-bd:#324250; --p-blue-ink:#7FB0E8;
+  --p-brown-bg:#2A251D; --p-brown-bd:#473F2E; --p-brown-ink:#D6B27E;
+  --p-purple-bg:#262031; --p-purple-bd:#3E3448; --p-purple-ink:#C3A6E0;
+  --p-green-bg:#1C2A1E; --p-green-bd:#2C4631; --p-red-bg:#2E1E1D; --p-red-bd:#5A3633;
+}
+.fa-root[data-theme="navy"] {
+  --bg:#F3F1EC; --surface:#FFFFFF; --surface2:#FFFFFF; --inset:#EEF0F4; --inset2:#F1F3F6;
+  --border:#E0DDD4; --border2:#DADDE4; --text:#1E2A38; --ink:#1E3A5F; --muted:#8A93A0; --muted2:#566273;
+  --accent:#1E3A5F; --accent-ink:#1E3A5F; --accent-soft:#E7ECF3; --on-accent:#FFFFFF; --brand-deep:#142639;
+  --p-gold-bg:#FBF4DF; --p-gold-bd:#ECDBA8; --p-gold-ink:#9A7416;
+  --p-blue-bg:#EEF3FA; --p-blue-bd:#CFE0F0; --p-blue-ink:#1E5BA8;
+  --p-brown-bg:#F4F0E8; --p-brown-bd:#E0D5C0; --p-brown-ink:#7A5A26;
+  --p-purple-bg:#F3EEF7; --p-purple-bd:#DDCFE8; --p-purple-ink:#6A4A8A;
+  --p-green-bg:#E9F1E6; --p-green-bd:#BFE3CC; --p-red-bg:#FBEAE8; --p-red-bd:#F0CFCB;
+}
+.fa-root[data-theme="teal"] {
+  --bg:#ECF1F2; --surface:#FFFFFF; --surface2:#FFFFFF; --inset:#E6EEEE; --inset2:#EDF3F3;
+  --border:#D6E1E1; --border2:#CFDCDC; --text:#1B2E2C; --ink:#234E4B; --muted:#82938F; --muted2:#506662;
+  --accent:#2F6E6A; --accent-ink:#2F6E6A; --accent-soft:#E2EEED; --on-accent:#FFFFFF; --brand-deep:#1C403D;
+  --p-gold-bg:#FBF4DF; --p-gold-bd:#ECDBA8; --p-gold-ink:#8A6A12;
+  --p-blue-bg:#EAF2F8; --p-blue-bd:#CADEEC; --p-blue-ink:#2257A0;
+  --p-brown-bg:#F2EFE7; --p-brown-bd:#DED3BE; --p-brown-ink:#735526;
+  --p-purple-bg:#F1EDF6; --p-purple-bd:#D9CCE6; --p-purple-ink:#634586;
+  --p-green-bg:#E5F0E8; --p-green-bd:#B9DEC4; --p-red-bg:#FBEAE8; --p-red-bd:#F0CFCB;
+}
+
+@media print {
+  .fa-noprint { display: none !important; }
+  .fa-print-only { display: block !important; }
+  .fa-root { background: var(--surface2,#fff) !important; min-height: 0 !important; }
+  .fa-root main { padding: 0 !important; max-width: 100% !important; }
+  .fa-root section { break-inside: avoid; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  @page { margin: 13mm; size: A4; }
+}
+
+/* native form controls follow theme */
+.fa-root input, .fa-root select, .fa-root button { font-family: 'IBM Plex Sans Thai', sans-serif; }
+.fa-root input[type="date"], .fa-root input[type="time"] { color-scheme: light; }
+.fa-root[data-theme="dark"] input[type="date"], .fa-root[data-theme="dark"] input[type="time"] { color-scheme: dark; }
