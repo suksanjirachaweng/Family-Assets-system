@@ -47,6 +47,7 @@ export interface AppState {
   histRange: HistRange;
   lineConnected: boolean;
   lineGroups: LineGroup[];
+  linePendingGroups: LineGroup[];
   lineLead: { d30: boolean; d7: boolean; d1: boolean };
   lineTypes: Partial<Record<AssetType, boolean>>;
   lineTime: string;
@@ -103,6 +104,7 @@ export const useAppStore = create<AppState>((setState) => ({
   histRange: '1Y',
   lineConnected: true,
   lineGroups: [],
+  linePendingGroups: [],
   lineLead: { d30: true, d7: true, d1: true },
   lineTypes: { fd: true, bond: true, fund: false },
   lineTime: '09:00',
@@ -158,6 +160,7 @@ export const useAppStore = create<AppState>((setState) => ({
       const s = data.settings || {};
       if (s.lineConnected != null) next.lineConnected = s.lineConnected;
       if (s.lineGroups) next.lineGroups = s.lineGroups;
+      if (s.linePendingGroups) next.linePendingGroups = s.linePendingGroups;
       if (s.lineLead) next.lineLead = s.lineLead;
       if (s.lineTypes) next.lineTypes = s.lineTypes;
       if (s.lineTime) next.lineTime = s.lineTime;

@@ -5,11 +5,20 @@ import { assetsWithDue } from '@/lib/assets';
 import { fmt, dueLabelTH } from '@/lib/format';
 import { ScreenTitle } from '@/components/common/ScreenTitle';
 import { BankBadge } from '@/components/common/BankBadge';
+import { AdminGate } from '@/components/common/AdminGate';
 import * as api from '@/api/client';
 
 const LINE_TYPE_KEYS: AssetType[] = ['fd', 'bond', 'fund'];
 
 export function LineSettingsView() {
+  return (
+    <AdminGate>
+      <LineSettingsContent />
+    </AdminGate>
+  );
+}
+
+function LineSettingsContent() {
   const s = useAppStore();
   const setView = useAppStore((st) => st.setView);
   const set = useAppStore((st) => st.set);
@@ -22,12 +31,24 @@ export function LineSettingsView() {
   const [testState, setTestState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
   const ejectGroup = async (id: string) => {
-    const filtered = s.lineGroups.filter((g) => g.id !== id);
-    set('lineGroups', filtered);
+    // works for both active and pending groups — an admin can reject a pending
+    // request the same way they'd remove an active one
+    set('lineGroups', s.lineGroups.filter((g) => g.id !== id));
+    set('linePendingGroups', s.linePendingGroups.filter((g) => g.id !== id));
     if (api.isConfigured()) {
       // ejectLineGroup also has the bot leave the LINE group itself, so it can't
       // get silently re-added the next time someone posts there
       try { await api.ejectLineGroup(id); } catch { /* optimistic — local state already updated */ }
+    }
+  };
+
+  const acceptGroup = async (id: string) => {
+    const found = s.linePendingGroups.find((g) => g.id === id);
+    if (!found) return;
+    set('linePendingGroups', s.linePendingGroups.filter((g) => g.id !== id));
+    set('lineGroups', [...s.lineGroups, found]);
+    if (api.isConfigured()) {
+      try { await api.acceptLineGroup(id); } catch { /* optimistic — local state already updated */ }
     }
   };
 
@@ -92,10 +113,31 @@ export function LineSettingsView() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 18, alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* pending approval */}
+          {s.linePendingGroups.length > 0 && (
+            <div style={{ ...card, border: '1.5px solid var(--p-gold-bd,#ECDBA8)', background: 'var(--p-gold-bg,#FBF4DF)' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4, color: 'var(--p-gold-ink,#8A6A12)' }}>กลุ่มที่รออนุมัติ</div>
+              <div style={{ fontSize: 12.5, color: 'var(--p-gold-ink,#8A6A12)', marginBottom: 14 }}>บอทถูกเชิญเข้ากลุ่มเหล่านี้แล้ว แต่ยังไม่ส่งแจ้งเตือนจนกว่าจะกด "ยอมรับ"</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {s.linePendingGroups.map((g) => (
+                  <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'var(--surface2,#fff)', borderRadius: 12, padding: '14px 16px' }}>
+                    <span style={{ width: 44, height: 44, borderRadius: 12, background: '#06C755', color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>L</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.name}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--p-gold-ink,#8A6A12)', fontWeight: 600 }}>● รอการอนุมัติ</div>
+                    </div>
+                    <button onClick={() => ejectGroup(g.id)} style={{ background: 'var(--surface2,#fff)', border: '1px solid #C0472E', borderRadius: 9, padding: '8px 14px', fontFamily: "'IBM Plex Sans Thai'", fontSize: 13, fontWeight: 600, color: '#C0472E', cursor: 'pointer', flexShrink: 0 }}>ปฏิเสธ</button>
+                    <button onClick={() => acceptGroup(g.id)} style={{ background: 'var(--accent,#5E7350)', border: 'none', borderRadius: 9, padding: '8px 14px', fontFamily: "'IBM Plex Sans Thai'", fontSize: 13, fontWeight: 600, color: 'var(--on-accent,#FBF8F1)', cursor: 'pointer', flexShrink: 0 }}>ยอมรับ</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* connection */}
           <div style={card}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>กลุ่ม LINE ที่เชื่อมต่อ</div>
-            <div style={{ fontSize: 12.5, color: 'var(--muted,#9A917F)', marginBottom: 14 }}>เชิญบอทเข้ากลุ่มแล้วส่งข้อความ 1 ครั้ง ระบบจะเพิ่มกลุ่มให้อัตโนมัติ — ส่งแจ้งเตือนได้พร้อมกันหลายกลุ่ม</div>
+            <div style={{ fontSize: 12.5, color: 'var(--muted,#9A917F)', marginBottom: 14 }}>เชิญบอทเข้ากลุ่มแล้วส่งข้อความ 1 ครั้ง กลุ่มจะไปโผล่ในช่อง "รออนุมัติ" ด้านบน — กด "ยอมรับ" เพื่อเริ่มส่งแจ้งเตือน (ส่งพร้อมกันได้หลายกลุ่ม)</div>
             {s.lineGroups.length === 0 ? (
               <div style={{ background: '#F1EDE2', border: '1px solid #E2D9C8', borderRadius: 10, padding: '11px 14px', fontSize: 12.5, color: 'var(--muted2,#6B6356)' }}>ยังไม่มีกลุ่มเชื่อมต่อ</div>
             ) : (

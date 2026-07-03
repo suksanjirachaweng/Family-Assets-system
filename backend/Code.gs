@@ -29,6 +29,8 @@ var DEFAULT_SETTINGS = {
   goldPricePerBaht: 51000,
   whtRate: 0.15,
   lineConnected: true,
+  lineGroups: [],
+  linePendingGroups: [],
   lineLead: { d30: true, d7: true, d1: true },
   lineTypes: { fd: true, bond: true, fund: false },
   lineTime: '09:00',
@@ -69,6 +71,7 @@ function doPost(e) {
       case 'recordMove': result = recordMove_(payload); break;
       case 'saveSettings': result = saveSettings_(payload); break;
       case 'ejectLineGroup': result = ejectLineGroup_(payload.groupId); break;
+      case 'acceptLineGroup': result = acceptLineGroup_(payload.groupId); break;
       case 'sendTest': result = sendLinePush_('🔔 ทดสอบการแจ้งเตือนจากระบบสินทรัพย์ครอบครัว'); break;
       default: throw new Error('unknown action: ' + action);
     }
@@ -267,34 +270,88 @@ function saveSettings_(partial) {
  * ========================================================================= */
 
 /** Logs every LINE webhook event to a "LineDebug" sheet (auto-created) for
- *  debugging, and auto-registers any group the bot sees into Settings.lineGroups
- *  — this is how new groups appear in the web app's group list without any
- *  manual copy-pasting of IDs. */
+ *  debugging, and routes group events:
+ *  - "join" (bot invited to a group) → pending-approval flow (handleGroupJoin_)
+ *  - "message" from a group → ignored unless it @mentions the bot (handleGroupMessage_)
+ *  Anything else (1:1 chat, non-group source, etc.) is logged only, no action. */
 function logLineWebhookIds_(events) {
   var s = ss_().getSheetByName('LineDebug') || ss_().insertSheet('LineDebug');
   events.forEach(function (ev) {
     s.appendRow([new Date(), ev.type, JSON.stringify(ev.source)]);
-    if (ev.source && ev.source.type === 'group' && ev.source.groupId) registerLineGroup_(ev.source.groupId);
+    if (!ev.source || ev.source.type !== 'group' || !ev.source.groupId) return;
+    if (ev.type === 'join') handleGroupJoin_(ev.source.groupId);
+    else if (ev.type === 'message') handleGroupMessage_(ev.source.groupId, ev);
   });
 }
 
-/** Adds a newly-seen group to Settings.lineGroups (deduped by id), fetching its
- *  display name from LINE's Group Summary API when possible. */
-function registerLineGroup_(groupId) {
+/** Bot was invited to a group: sends a one-time "waiting for approval" message
+ *  and records the group as PENDING — it does NOT receive notifications until
+ *  an admin accepts it from the web app (acceptLineGroup_). No-ops if the group
+ *  is already known (active or still pending) so the message doesn't repeat. */
+function handleGroupJoin_(groupId) {
   var s = getSettings_();
-  var groups = s.lineGroups || [];
-  if (groups.some(function (g) { return g.id === groupId; })) return;
-  groups.push({ id: groupId, name: getGroupName_(groupId) || groupId });
-  saveSettings_({ lineGroups: groups });
+  var active = s.lineGroups || [];
+  var pending = s.linePendingGroups || [];
+  if (active.some(function (g) { return g.id === groupId; })) return;
+  if (pending.some(function (g) { return g.id === groupId; })) return;
+  pending.push({ id: groupId, name: getGroupName_(groupId) || groupId });
+  saveSettings_({ linePendingGroups: pending });
+  pushToGroup_(groupId, '🔔 บอทถูกเชิญเข้ากลุ่มนี้แล้ว กำลังรอผู้ดูแลระบบอนุมัติก่อนเริ่มส่งการแจ้งเตือนครับ');
 }
 
-/** Removes a group from Settings.lineGroups AND has the bot actually leave that
- *  LINE group (LINE Messaging API's "Leave group" endpoint) — this is what makes
- *  ejecting permanent: with the bot no longer a member, no future message in that
- *  group can re-trigger `registerLineGroup_` via the webhook. */
+/** Ordinary chat in a group is ignored completely — the bot only reacts when
+ *  @mentioned (LINE marks this via `message.mention.mentionees[].isSelf`). If a
+ *  mention arrives from a totally unknown group (e.g. the "join" event was
+ *  missed), it's treated as a fresh join instead of answering. */
+function handleGroupMessage_(groupId, ev) {
+  var msg = ev.message;
+  if (!msg || msg.type !== 'text') return;
+  var mentionsBot = !!(msg.mention && msg.mention.mentionees &&
+    msg.mention.mentionees.some(function (m) { return m.isSelf; }));
+  if (!mentionsBot) return;
+
+  var s = getSettings_();
+  var active = s.lineGroups || [];
+  var pending = s.linePendingGroups || [];
+  var isActive = active.some(function (g) { return g.id === groupId; });
+  var isPending = pending.some(function (g) { return g.id === groupId; });
+  if (!isActive && !isPending) { handleGroupJoin_(groupId); return; }
+  if (!isActive) return; // still awaiting admin approval — stay silent
+  answerBotQuestion_(groupId, msg.text);
+}
+
+/** Placeholder — exact supported questions/answers are still to be specified.
+ *  For now just acknowledges the question was received, so tagging the bot
+ *  visibly does something while the real Q&A logic is designed. */
+function answerBotQuestion_(groupId, questionText) {
+  pushToGroup_(groupId, '🤖 ได้รับคำถามแล้วครับ: "' + questionText + '"\nฟีเจอร์ตอบคำถามอัตโนมัติกำลังอยู่ระหว่างการพัฒนา 🙏');
+}
+
+/** Admin accepts a pending group from the web app: moves it into the active
+ *  (notified) list and sends a confirmation message into that group. */
+function acceptLineGroup_(groupId) {
+  var s = getSettings_();
+  var found = null;
+  var remainingPending = (s.linePendingGroups || []).filter(function (g) {
+    if (g.id === groupId) { found = g; return false; }
+    return true;
+  });
+  var active = s.lineGroups || [];
+  if (found && !active.some(function (g) { return g.id === groupId; })) active.push(found);
+  saveSettings_({ lineGroups: active, linePendingGroups: remainingPending });
+  pushToGroup_(groupId, '✅ กลุ่มนี้ได้รับการอนุมัติแล้ว ระบบจะเริ่มส่งการแจ้งเตือนสินทรัพย์เข้ากลุ่มนี้ต่อจากนี้ครับ');
+  return { lineGroups: active, linePendingGroups: remainingPending };
+}
+
+/** Removes a group from both the active and pending lists AND has the bot
+ *  actually leave that LINE group (LINE Messaging API's "Leave group" endpoint)
+ *  — this is what makes ejecting/rejecting permanent: with the bot no longer a
+ *  member, no future message in that group can re-trigger the join/pending flow. */
 function ejectLineGroup_(groupId) {
-  var groups = (getSettings_().lineGroups || []).filter(function (g) { return g.id !== groupId; });
-  saveSettings_({ lineGroups: groups });
+  var s = getSettings_();
+  var groups = (s.lineGroups || []).filter(function (g) { return g.id !== groupId; });
+  var pending = (s.linePendingGroups || []).filter(function (g) { return g.id !== groupId; });
+  saveSettings_({ lineGroups: groups, linePendingGroups: pending });
   var token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
   var leaveResult = null;
   if (token) {
@@ -306,10 +363,10 @@ function ejectLineGroup_(groupId) {
     leaveResult = { status: res.getResponseCode(), body: res.getContentText() };
     // logged to the same "LineDebug" sheet used for webhook capture, so failures are visible
     // without needing to dig through Apps Script's Executions panel
-    var s = ss_().getSheetByName('LineDebug') || ss_().insertSheet('LineDebug');
-    s.appendRow([new Date(), 'leaveGroup:' + groupId, JSON.stringify(leaveResult)]);
+    var s2 = ss_().getSheetByName('LineDebug') || ss_().insertSheet('LineDebug');
+    s2.appendRow([new Date(), 'leaveGroup:' + groupId, JSON.stringify(leaveResult)]);
   }
-  return { lineGroups: groups, leaveResult: leaveResult };
+  return { lineGroups: groups, linePendingGroups: pending, leaveResult: leaveResult };
 }
 
 /** One-time cleanup: the legacy-migration path in getSettings_() couldn't fetch
@@ -341,19 +398,30 @@ function getGroupName_(groupId) {
   }
 }
 
+/** Pushes to exactly one group/user id — used both for broadcast (sendLinePush_
+ *  loops this over every active group) and for one-off messages sent to a
+ *  specific group (join notice, approval confirmation, question ack). */
+function pushToGroup_(groupId, text) {
+  var token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
+  if (!token) return { skipped: true };
+  var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token },
+    payload: JSON.stringify({ to: groupId, messages: [{ type: 'text', text: text }] }),
+    muteHttpExceptions: true
+  });
+  return { status: res.getResponseCode(), body: res.getContentText() };
+}
+
 function sendLinePush_(text) {
   var token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
   var groupIds = (getSettings_().lineGroups || []).map(function (g) { return g.id; });
   if (!token || !groupIds.length) { Logger.log('LINE not configured — skipped: ' + text); return { skipped: true }; }
   var results = groupIds.map(function (gid) {
-    var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { Authorization: 'Bearer ' + token },
-      payload: JSON.stringify({ to: gid, messages: [{ type: 'text', text: text }] }),
-      muteHttpExceptions: true
-    });
-    return { groupId: gid, status: res.getResponseCode(), body: res.getContentText() };
+    var r = pushToGroup_(gid, text);
+    r.groupId = gid;
+    return r;
   });
   return { results: results };
 }

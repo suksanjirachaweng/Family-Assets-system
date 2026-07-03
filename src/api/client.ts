@@ -18,6 +18,7 @@ export interface RemoteSettings {
   whtRate?: number;
   lineConnected?: boolean;
   lineGroups?: LineGroup[];
+  linePendingGroups?: LineGroup[];
   lineLead?: { d30: boolean; d7: boolean; d1: boolean };
   lineTypes?: Record<string, boolean>;
   lineTime?: string;
@@ -65,7 +66,10 @@ export const updateAsset = (a: RawAsset) => post<{ id: string }>('updateAsset', 
 export const deleteAsset = (id: string) => post<{ id: string }>('deleteAsset', { id });
 export const recordMove = (m: { title: string; detail: string; amount: number }) => post<{ id: string }>('recordMove', m);
 export const saveSettings = (s: RemoteSettings) => post<RemoteSettings>('saveSettings', s);
-/** Removes the group from the notification list AND has the bot leave that LINE
- *  group, so it can't get silently re-added by a future message there. */
-export const ejectLineGroup = (groupId: string) => post<{ lineGroups: LineGroup[] }>('ejectLineGroup', { groupId });
+/** Removes the group from both the active and pending lists AND has the bot leave
+ *  that LINE group, so it can't get silently re-added by a future message there. */
+export const ejectLineGroup = (groupId: string) => post<{ lineGroups: LineGroup[]; linePendingGroups: LineGroup[] }>('ejectLineGroup', { groupId });
+/** Admin approves a pending group — moves it to the active list and the bot
+ *  sends a confirmation message into that group. */
+export const acceptLineGroup = (groupId: string) => post<{ lineGroups: LineGroup[]; linePendingGroups: LineGroup[] }>('acceptLineGroup', { groupId });
 export const sendTest = () => post<unknown>('sendTest', {});
