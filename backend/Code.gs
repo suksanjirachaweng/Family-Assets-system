@@ -296,14 +296,20 @@ function ejectLineGroup_(groupId) {
   var groups = (getSettings_().lineGroups || []).filter(function (g) { return g.id !== groupId; });
   saveSettings_({ lineGroups: groups });
   var token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
+  var leaveResult = null;
   if (token) {
-    UrlFetchApp.fetch('https://api.line.me/v2/bot/group/' + groupId + '/leave', {
+    var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/group/' + groupId + '/leave', {
       method: 'post',
       headers: { Authorization: 'Bearer ' + token },
       muteHttpExceptions: true
     });
+    leaveResult = { status: res.getResponseCode(), body: res.getContentText() };
+    // logged to the same "LineDebug" sheet used for webhook capture, so failures are visible
+    // without needing to dig through Apps Script's Executions panel
+    var s = ss_().getSheetByName('LineDebug') || ss_().insertSheet('LineDebug');
+    s.appendRow([new Date(), 'leaveGroup:' + groupId, JSON.stringify(leaveResult)]);
   }
-  return { lineGroups: groups };
+  return { lineGroups: groups, leaveResult: leaveResult };
 }
 
 /** One-time cleanup: the legacy-migration path in getSettings_() couldn't fetch
