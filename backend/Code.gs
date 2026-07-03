@@ -68,6 +68,7 @@ function doPost(e) {
       case 'deleteAsset': result = deleteAsset_(payload.id); break;
       case 'recordMove': result = recordMove_(payload); break;
       case 'saveSettings': result = saveSettings_(payload); break;
+      case 'ejectLineGroup': result = ejectLineGroup_(payload.groupId); break;
       case 'sendTest': result = sendLinePush_('🔔 ทดสอบการแจ้งเตือนจากระบบสินทรัพย์ครอบครัว'); break;
       default: throw new Error('unknown action: ' + action);
     }
@@ -278,18 +279,31 @@ function logLineWebhookIds_(events) {
 }
 
 /** Adds a newly-seen group to Settings.lineGroups (deduped by id), fetching its
- *  display name from LINE's Group Summary API when possible.
- *  Caveat: if a group is ejected via the web app's "เอาออก" button but the bot
- *  is still a member of that LINE group, the next message sent there will
- *  re-register it (LINE gives bots no API to leave a group on their own — a
- *  human has to remove it). Ejecting stops notifications immediately either way;
- *  to make it permanent, also remove the bot from that group in the LINE app. */
+ *  display name from LINE's Group Summary API when possible. */
 function registerLineGroup_(groupId) {
   var s = getSettings_();
   var groups = s.lineGroups || [];
   if (groups.some(function (g) { return g.id === groupId; })) return;
   groups.push({ id: groupId, name: getGroupName_(groupId) || groupId });
   saveSettings_({ lineGroups: groups });
+}
+
+/** Removes a group from Settings.lineGroups AND has the bot actually leave that
+ *  LINE group (LINE Messaging API's "Leave group" endpoint) — this is what makes
+ *  ejecting permanent: with the bot no longer a member, no future message in that
+ *  group can re-trigger `registerLineGroup_` via the webhook. */
+function ejectLineGroup_(groupId) {
+  var groups = (getSettings_().lineGroups || []).filter(function (g) { return g.id !== groupId; });
+  saveSettings_({ lineGroups: groups });
+  var token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
+  if (token) {
+    UrlFetchApp.fetch('https://api.line.me/v2/bot/group/' + groupId + '/leave', {
+      method: 'post',
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+  }
+  return { lineGroups: groups };
 }
 
 /** One-time cleanup: the legacy-migration path in getSettings_() couldn't fetch

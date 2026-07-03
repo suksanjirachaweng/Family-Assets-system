@@ -25,7 +25,9 @@ export function LineSettingsView() {
     const filtered = s.lineGroups.filter((g) => g.id !== id);
     set('lineGroups', filtered);
     if (api.isConfigured()) {
-      try { await api.saveSettings({ lineGroups: filtered }); } catch { /* optimistic — local state already updated */ }
+      // ejectLineGroup also has the bot leave the LINE group itself, so it can't
+      // get silently re-added the next time someone posts there
+      try { await api.ejectLineGroup(id); } catch { /* optimistic — local state already updated */ }
     }
   };
 
