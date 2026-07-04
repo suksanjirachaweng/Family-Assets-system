@@ -299,16 +299,24 @@ function handleGroupJoin_(groupId) {
   pushToGroup_(groupId, '🔔 บอทถูกเชิญเข้ากลุ่มนี้แล้ว กำลังรอผู้ดูแลระบบอนุมัติก่อนเริ่มส่งการแจ้งเตือนครับ');
 }
 
+/** LINE's group "@" autocomplete doesn't reliably list Official/verified
+ *  accounts as mentionable, so users end up typing the bot's name as plain
+ *  text instead of a real mention. Detect both: a real mention object
+ *  (`message.mention.mentionees[].isSelf`, in case it ever does register)
+ *  OR the account name appearing literally in the message text. */
+var BOT_NAME_ = 'NSL_FAMILY_ASSET';
+
 /** Ordinary chat in a group is ignored completely — the bot only reacts when
- *  @mentioned (LINE marks this via `message.mention.mentionees[].isSelf`). If a
- *  mention arrives from a totally unknown group (e.g. the "join" event was
- *  missed), it's treated as a fresh join instead of answering. */
+ *  tagged (see BOT_NAME_ above for how "tagged" is detected). If a mention
+ *  arrives from a totally unknown group (e.g. the "join" event was missed),
+ *  it's treated as a fresh join instead of answering. */
 function handleGroupMessage_(groupId, ev) {
   var msg = ev.message;
   if (!msg || msg.type !== 'text') return;
-  var mentionsBot = !!(msg.mention && msg.mention.mentionees &&
+  var realMention = !!(msg.mention && msg.mention.mentionees &&
     msg.mention.mentionees.some(function (m) { return m.isSelf; }));
-  if (!mentionsBot) return;
+  var textMention = msg.text && msg.text.toLowerCase().indexOf(BOT_NAME_.toLowerCase()) !== -1;
+  if (!realMention && !textMention) return;
 
   var s = getSettings_();
   var active = s.lineGroups || [];
@@ -320,11 +328,67 @@ function handleGroupMessage_(groupId, ev) {
   answerBotQuestion_(groupId, msg.text);
 }
 
-/** Placeholder — exact supported questions/answers are still to be specified.
- *  For now just acknowledges the question was received, so tagging the bot
- *  visibly does something while the real Q&A logic is designed. */
+/** Keyword-matched Q&A for @mention questions in an active group. Reuses the
+ *  same amount/date logic as CRUD + daily notifications (computeAmount_,
+ *  daysBetween_) so answers always match the web app and reminders. Falls
+ *  back to a menu of supported questions if nothing matches — v1 supports
+ *  3 question types; more can be added the same way later. */
 function answerBotQuestion_(groupId, questionText) {
-  pushToGroup_(groupId, '🤖 ได้รับคำถามแล้วครับ: "' + questionText + '"\nฟีเจอร์ตอบคำถามอัตโนมัติกำลังอยู่ระหว่างการพัฒนา 🙏');
+  var text = questionText || '';
+  var reply;
+  if (text.indexOf('ใกล้ครบ') !== -1) reply = answerNearMaturity_();
+  else if (text.indexOf('เจ้าของ') !== -1) reply = answerByOwner_();
+  else if (text.indexOf('มูลค่ารวม') !== -1 || text.indexOf('มูลค่าสุทธิ') !== -1 || text.indexOf('รวมสุทธิ') !== -1) reply = answerTotalNetWorth_();
+  else reply = QNA_MENU_;
+  pushToGroup_(groupId, reply);
+}
+
+var QNA_MENU_ = '❓ ไม่เข้าใจคำถามนี้ครับ ลองถามแบบนี้ดูนะครับ:\n' +
+  '• ใกล้ครบกำหนด\n' +
+  '• สรุปทรัพย์สินแยกตามเจ้าของ\n' +
+  '• มูลค่ารวมสุทธิทั้งหมด';
+
+/** Assets due within the next 90 days (0..90 inclusive) — same window as the
+ *  "ใกล้ครบกำหนด (90 วัน)" card in OverviewView.tsx. */
+function answerNearMaturity_() {
+  var s = getSettings_();
+  var items = listAssets_().filter(function (a) { return !!a.due; })
+    .map(function (a) { return { a: a, days: daysBetween_(a.due) }; })
+    .filter(function (x) { return x.days >= 0 && x.days <= 90; })
+    .sort(function (x, y) { return x.days - y.days; });
+  if (!items.length) return '✅ ไม่มีบัญชีที่ใกล้ครบกำหนดภายใน 90 วันข้างหน้าครับ';
+  var total = items.reduce(function (sum, x) { return sum + computeAmount_(x.a, s.goldPricePerBaht); }, 0);
+  var lines = items.map(function (x) {
+    var amount = computeAmount_(x.a, s.goldPricePerBaht);
+    return '• ' + (TYPE_LABEL[x.a.type] || x.a.type) + ' · ' + x.a.name + ' · เจ้าของ: ' + x.a.owners.join(' · ') +
+      '\n  ครบกำหนดอีก ' + x.days + ' วัน (' + x.a.due + ') · ' + baht_(amount);
+  });
+  return '📅 บัญชีใกล้ครบกำหนด (90 วัน) — ' + items.length + ' รายการ รวม ' + baht_(total) + '\n' + lines.join('\n');
+}
+
+/** Groups assets by owner combo — jointly-owned assets go into their own
+ *  combined bucket (e.g. "กวิน · ธีรดา"), matching ownerKey() in assets.ts;
+ *  values are NOT split across co-owners. */
+function answerByOwner_() {
+  var s = getSettings_();
+  var buckets = {};
+  var order = [];
+  listAssets_().forEach(function (a) {
+    var key = a.owners.length > 1 ? a.owners.slice().sort().join(' · ') : a.owners[0];
+    if (!(key in buckets)) { buckets[key] = 0; order.push(key); }
+    buckets[key] += computeAmount_(a, s.goldPricePerBaht);
+  });
+  order.sort(function (x, y) { return buckets[y] - buckets[x]; });
+  var lines = order.map(function (k) { return '• ' + k + ': ' + baht_(buckets[k]); });
+  return '👪 สรุปทรัพย์สินแยกตามเจ้าของ\n' + lines.join('\n');
+}
+
+/** Plain sum of every asset's computed amount — matches the "มูลค่ารวมสุทธิ"
+ *  total shown in the app header (no WHT deduction, same as OverviewView.tsx). */
+function answerTotalNetWorth_() {
+  var s = getSettings_();
+  var total = listAssets_().reduce(function (sum, a) { return sum + computeAmount_(a, s.goldPricePerBaht); }, 0);
+  return '💰 มูลค่ารวมสุทธิทั้งหมด: ' + baht_(total);
 }
 
 /** Admin accepts a pending group from the web app: moves it into the active
