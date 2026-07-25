@@ -161,14 +161,14 @@ export function FlowView() {
                 onClick={() => set('flowSel', n.isSel ? null : n.id)}
                 style={n.boxStyle}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                  <div style={n.tagStyle}>{n.tag}</div>
-                  <div style={{ fontSize: 9.5, color: 'var(--muted,#A89F8C)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n.dateLabel}</div>
+                <div style={n.stripStyle}><span style={n.tagStyle}>{n.tag}</span></div>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
+                  <div style={n.amountStyle}>{n.amount}</div>
+                  <div style={{ fontSize: 9, color: 'var(--muted,#A89F8C)', whiteSpace: 'nowrap', flexShrink: 0 }}>{n.dateLabel}</div>
                 </div>
-                <div style={n.amountStyle}>{n.amount}</div>
-                <div style={{ ...n.subStyle, display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                  <BankBadge text={n.sub} size={12} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{n.sub}</span>
+                <div style={{ ...n.subStyle, display: 'flex', alignItems: 'flex-start', gap: 4, minWidth: 0 }}>
+                  <span style={{ flexShrink: 0, marginTop: 1 }}><BankBadge text={n.sub} size={11} /></span>
+                  <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n.sub}</span>
                 </div>
               </div>
             ))}

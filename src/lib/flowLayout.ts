@@ -6,7 +6,7 @@ import { ownerColor, mixHex } from './colors';
 import type { FlowRange, FlowXAxis } from '@/store/useAppStore';
 import type { MoveRecord } from '@/api/client';
 
-const NW = 172, NH = 52, NH_COMPACT = 42, COLW = 220, PADX = 20, PADY = 16, ROWH = 64, NODE_GAP = 14;
+const NW = 176, NH = 60, STRIP_W = 20, COLW = 220, PADX = 20, PADY = 16, ROWH = 64, NODE_GAP = 14;
 type FlowDateStep = 'month' | '2week' | 'week';
 const PX_PER_DAY_BY_STEP: Record<FlowDateStep, number> = { month: 4, '2week': 8.5, week: 17 };
 
@@ -50,6 +50,7 @@ export interface FlowNodeVM {
   tag: string;
   dateLabel: string;
   boxStyle: CSSProperties;
+  stripStyle: CSSProperties;
   tagStyle: CSSProperties;
   amountStyle: CSSProperties;
   subStyle: CSSProperties;
@@ -131,7 +132,7 @@ export function computeFlow(p: FlowParams): FlowResult {
 
   const nodes = G.nodes.map((n) => ({
     id: n.id, x: xOf(n), y: yPos[n.id] + PADY, w: NW,
-    h: (n.type === 'exit' || n.type === 'merge') ? NH_COMPACT : NH,
+    h: NH,
     type: n.type, amount: n.amount, sub: n.label, date: n.date,
   }));
 
@@ -209,7 +210,6 @@ export function computeFlow(p: FlowParams): FlowResult {
     const borderC = mixHex(c, '#000000', 0.18);
     const bgC = mixHex(c, '#FFFFFF', 0.55);
     const typeC = colorOf(n.type);
-    const isAsset = !!(TYPES as Record<string, unknown>)[n.type];
     return {
       id: n.id,
       isSel,
@@ -217,13 +217,13 @@ export function computeFlow(p: FlowParams): FlowResult {
       sub: n.sub,
       tag: ASSET_TAG[n.type],
       dateLabel: dueLabelTH(n.date),
-      amountStyle: { fontFamily: "'Lora',serif", fontWeight: 700, fontSize: 12.5, color: mixHex(c, '#000000', 0.35), margin: 0 },
-      subStyle: { fontSize: 9.5, color: mixHex(c, '#000000', 0.5), lineHeight: 1.2 },
+      amountStyle: { fontFamily: "'Lora',serif", fontWeight: 700, fontSize: 12.5, color: mixHex(c, '#000000', 0.35), margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 },
+      subStyle: { fontSize: 9.5, color: mixHex(c, '#000000', 0.5), lineHeight: 1.25 },
       boxStyle: {
         position: 'absolute', left: n.x, top: n.y, width: n.w, height: n.h, overflow: 'hidden',
         background: bgC, color: borderC,
         border: (dashed ? '1.5px dashed ' : '1.5px solid ') + borderC,
-        borderRadius: 8, padding: '5px 8px', boxSizing: 'border-box',
+        borderRadius: 8, padding: `5px 8px 5px ${STRIP_W + 6}px`, boxSizing: 'border-box',
         boxShadow: isSrc
           ? ('0 0 0 3px ' + bgC + ', 0 0 0 4.5px ' + borderC + (isSel ? ', 0 4px 14px rgba(60,50,30,0.22)' : ''))
           : (isSel ? '0 4px 14px rgba(60,50,30,0.22)' : '0 1px 3px rgba(60,50,30,0.07)'),
@@ -231,9 +231,16 @@ export function computeFlow(p: FlowParams): FlowResult {
         outlineOffset: 2,
         cursor: 'pointer',
       },
-      tagStyle: isAsset
-        ? { display: 'inline-block', flexShrink: 0, whiteSpace: 'nowrap', fontSize: 9, fontWeight: 700, color: mixHex(typeC, '#000000', 0.3), background: mixHex(typeC, '#FFFFFF', 0.62), border: '1px solid ' + mixHex(typeC, '#000000', 0.15), padding: '1px 6px', borderRadius: 5, letterSpacing: '0.01em' }
-        : { flexShrink: 0, whiteSpace: 'nowrap', fontSize: 9.5, fontWeight: 700, color: mixHex(c, '#000000', 0.4), letterSpacing: '0.02em' },
+      stripStyle: {
+        position: 'absolute', left: 0, top: 0, bottom: 0, width: STRIP_W,
+        background: mixHex(typeC, '#FFFFFF', 0.6),
+        borderRight: '1px solid ' + mixHex(typeC, '#000000', 0.15),
+        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+      },
+      tagStyle: {
+        display: 'inline-block', whiteSpace: 'nowrap', transform: 'rotate(-90deg)',
+        fontSize: 9, fontWeight: 700, color: mixHex(typeC, '#000000', 0.4), letterSpacing: '0.02em',
+      },
     };
   });
 
