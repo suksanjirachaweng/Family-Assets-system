@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { buildFlowGraph } from '@/data/flowGraph';
 import { TYPES, type Asset, type FlowNodeType } from '@/data/types';
 import { dueLabelTH, fmt, thMon } from './format';
-import { ownerColor, mixHex } from './colors';
+import { ownerColor, mixHex, KNOWN_OWNERS } from './colors';
 import type { FlowRange, FlowXAxis } from '@/store/useAppStore';
 import type { MoveRecord } from '@/api/client';
 
@@ -35,6 +35,31 @@ const ownerOf = (lbl: string) => {
   return p.length > 1 ? p[p.length - 1].trim() : '';
 };
 
+const KNOWN_OWNERS_SET = new Set(KNOWN_OWNERS);
+
+/** Splits a "name · owner · owner" label into plain-text segments and owner
+ *  segments (the trailing run of parts that match a known family owner),
+ *  so each owner's name can be rendered in its own color + bold instead of
+ *  the whole card being tinted by one blended color. */
+function splitLabelParts(label: string): { text: string; color?: string; bold?: boolean }[] {
+  const segs = String(label).split(' · ');
+  let ownerStart = segs.length;
+  for (let i = segs.length - 1; i >= 0; i--) {
+    if (KNOWN_OWNERS_SET.has(segs[i].trim())) ownerStart = i;
+    else break;
+  }
+  const rest = segs.slice(0, ownerStart).join(' · ');
+  const owners = segs.slice(ownerStart);
+  const parts: { text: string; color?: string; bold?: boolean }[] = [];
+  if (rest) parts.push({ text: rest + (owners.length ? ' · ' : '') });
+  owners.forEach((o, i) => {
+    parts.push({ text: o, color: ownerColor(o), bold: true });
+    if (i < owners.length - 1) parts.push({ text: ' · ' });
+  });
+  if (!parts.length) parts.push({ text: label });
+  return parts;
+}
+
 export type { FlowDateStep };
 
 export interface FlowParams {
@@ -54,6 +79,7 @@ export interface FlowNodeVM {
   isSel: boolean;
   amount: string;
   sub: string;
+  subParts: { text: string; color?: string; bold?: boolean }[];
   tag: string;
   dateLabel: string;
   boxStyle: CSSProperties;
@@ -97,9 +123,61 @@ export function computeFlow(p: FlowParams): FlowResult {
   if (!G.nodes.length) return EMPTY_FLOW;
   const gmap: Record<string, (typeof G.nodes)[number]> = {};
   G.nodes.forEach((n) => { gmap[n.id] = n; });
+
+  // Full-graph date range — kept stable across owner/date filter changes so
+  // the date axis and range presets don't jump around as you narrow the view.
+  const allDatesRaw = G.nodes.map((n) => n.date).filter(Boolean).sort();
+  const minDate = allDatesRaw[0], maxDate = allDatesRaw[allDatesRaw.length - 1];
+  const totalDays = Math.max(1, daysBetween(minDate, maxDate));
+  const pxPerDay = PX_PER_DAY_BY_STEP[p.dateStep] ?? PX_PER_DAY_BY_STEP.month;
+
+  // Selection (click-to-trace) reachability, computed over the FULL graph's
+  // edges so ancestors/descendants are found correctly regardless of what
+  // the owner/date filters below end up hiding.
+  const fwdFull: Record<string, string[]> = {}, revFull: Record<string, string[]> = {};
+  G.edges.forEach(([a, b]) => {
+    if (!gmap[a] || !gmap[b]) return;
+    (fwdFull[a] = fwdFull[a] || []).push(b);
+    (revFull[b] = revFull[b] || []).push(a);
+  });
+  const reach = (start: string, adj: Record<string, string[]>) => {
+    const seen: Record<string, 1> = {}; const st = [start];
+    while (st.length) { const x = st.pop()!; (adj[x] || []).forEach((y) => { if (!seen[y]) { seen[y] = 1; st.push(y); } }); }
+    return seen;
+  };
+  const sel = p.flowSel;
+  let activeNodes: Record<string, 1> | null = null;
+  if (sel && gmap[sel]) {
+    const up = reach(sel, revFull), down = reach(sel, fwdFull);
+    activeNodes = { ...up, ...down }; activeNodes[sel] = 1;
+  }
+  const nodeActive = (id: string) => !activeNodes || activeNodes[id];
+
+  // date filter (preset or manual)
+  const yearsBack: Record<string, number> = { '1Y': 1, '3Y': 3, '5Y': 5 };
+  let from: string, to: string;
+  if (p.flowRange === 'ALL') {
+    from = ''; to = '';
+  } else if (p.flowRange && yearsBack[p.flowRange]) {
+    const anchor = new Date(maxDate);
+    const f = new Date(anchor); f.setFullYear(f.getFullYear() - yearsBack[p.flowRange]);
+    from = f.toISOString().slice(0, 10); to = maxDate;
+  } else { from = p.flowFrom; to = p.flowTo; }
+  const dateOk = (n: { date: string }) => (!from || n.date >= from) && (!to || n.date <= to);
+  const ownerOk = (n: { label: string }) => !p.ownerFilter || n.label.includes(p.ownerFilter);
+
+  // Filter the graph BEFORE laying it out, so hidden nodes don't leave empty
+  // gaps behind — the surviving nodes get a fresh, compact generation/row
+  // layout every time the selection/date/owner filter changes, instead of
+  // just being hidden inside a layout computed for the full graph.
+  const activeGraphNodes = G.nodes.filter((n) => nodeActive(n.id) && dateOk(n) && ownerOk({ label: n.label }));
+  const activeIds: Record<string, 1> = {};
+  activeGraphNodes.forEach((n) => { activeIds[n.id] = 1; });
+  const activeEdges = G.edges.filter(([a, b]) => activeIds[a] && activeIds[b]);
+
   const childrenOf: Record<string, string[]> = {}, parentsOf: Record<string, string[]> = {};
-  G.nodes.forEach((n) => { childrenOf[n.id] = []; parentsOf[n.id] = []; });
-  G.edges.forEach(([a, b]) => { if (gmap[a] && gmap[b]) { childrenOf[a].push(b); parentsOf[b].push(a); } });
+  activeGraphNodes.forEach((n) => { childrenOf[n.id] = []; parentsOf[n.id] = []; });
+  activeEdges.forEach(([a, b]) => { childrenOf[a].push(b); parentsOf[b].push(a); });
 
   const genMemo: Record<string, number> = {};
   const calcGen = (id: string): number => {
@@ -109,13 +187,8 @@ export function computeFlow(p: FlowParams): FlowResult {
     parentsOf[id].forEach((par) => { g = Math.max(g, calcGen(par) + 1); });
     return (genMemo[id] = g);
   };
-  G.nodes.forEach((n) => calcGen(n.id));
-  const maxGen = Math.max(0, ...G.nodes.map((n) => genMemo[n.id]));
-
-  const allDatesRaw = G.nodes.map((n) => n.date).filter(Boolean).sort();
-  const minDate = allDatesRaw[0], maxDate = allDatesRaw[allDatesRaw.length - 1];
-  const totalDays = Math.max(1, daysBetween(minDate, maxDate));
-  const pxPerDay = PX_PER_DAY_BY_STEP[p.dateStep] ?? PX_PER_DAY_BY_STEP.month;
+  activeGraphNodes.forEach((n) => calcGen(n.id));
+  const maxGen = Math.max(0, ...activeGraphNodes.map((n) => genMemo[n.id]));
 
   let cursor = 0;
   const yPos: Record<string, number> = {};
@@ -129,16 +202,16 @@ export function computeFlow(p: FlowParams): FlowResult {
     ch.forEach((c) => { s += dfsY(c, s2); });
     return (yPos[id] = s / ch.length);
   };
-  const roots = G.nodes.filter((n) => parentsOf[n.id].length === 0);
+  const roots = activeGraphNodes.filter((n) => parentsOf[n.id].length === 0);
   roots.forEach((r) => dfsY(r.id));
-  G.nodes.forEach((n) => { if (yPos[n.id] == null) { yPos[n.id] = cursor * ROWH; cursor++; } });
+  activeGraphNodes.forEach((n) => { if (yPos[n.id] == null) { yPos[n.id] = cursor * ROWH; cursor++; } });
 
   const xOf = (n: { id: string; date: string }) =>
     p.xAxisMode === 'date'
       ? PADX + Math.max(0, daysBetween(minDate, n.date)) * pxPerDay
       : genMemo[n.id] * COLW + PADX;
 
-  const nodes = G.nodes.map((n) => ({
+  const nodes = activeGraphNodes.map((n) => ({
     id: n.id, x: xOf(n), y: yPos[n.id] + PADY, w: NW,
     h: NH,
     type: n.type, amount: n.amount, sub: n.label, date: n.date,
@@ -169,47 +242,12 @@ export function computeFlow(p: FlowParams): FlowResult {
 
   const nodeMap: Record<string, (typeof nodes)[number]> = {};
   nodes.forEach((n) => { nodeMap[n.id] = n; });
-  const links = G.edges.filter(([a, b]) => nodeMap[a] && nodeMap[b]);
+  const links = activeEdges;
   const flowW = p.xAxisMode === 'date'
     ? PADX + totalDays * pxPerDay + NW + PADX
     : (maxGen + 1) * COLW + PADX;
   const flowH = maxY + PADY + 24;
-
-  // selection: ancestors + descendants
-  const fwd: Record<string, string[]> = {}, rev: Record<string, string[]> = {};
-  links.forEach(([f, t]) => { (fwd[f] = fwd[f] || []).push(t); (rev[t] = rev[t] || []).push(f); });
-  const reach = (start: string, adj: Record<string, string[]>) => {
-    const seen: Record<string, 1> = {}; const st = [start];
-    while (st.length) { const x = st.pop()!; (adj[x] || []).forEach((y) => { if (!seen[y]) { seen[y] = 1; st.push(y); } }); }
-    return seen;
-  };
-  const sel = p.flowSel;
-  let activeNodes: Record<string, 1> | null = null;
-  if (sel && nodeMap[sel]) {
-    const up = reach(sel, rev), down = reach(sel, fwd);
-    activeNodes = { ...up, ...down }; activeNodes[sel] = 1;
-  }
-  const nodeActive = (id: string) => !activeNodes || activeNodes[id];
-
-  // date filter (preset or manual)
-  const yearsBack: Record<string, number> = { '1Y': 1, '3Y': 3, '5Y': 5 };
-  let from: string, to: string;
-  if (p.flowRange === 'ALL') {
-    from = ''; to = '';
-  } else if (p.flowRange && yearsBack[p.flowRange]) {
-    const anchor = new Date(maxDate);
-    const f = new Date(anchor); f.setFullYear(f.getFullYear() - yearsBack[p.flowRange]);
-    from = f.toISOString().slice(0, 10); to = maxDate;
-  } else { from = p.flowFrom; to = p.flowTo; }
-  const dateOk = (n: { date: string }) => (!from || n.date >= from) && (!to || n.date <= to);
-  const ownerOk = (n: { sub: string }) => !p.ownerFilter || n.sub.includes(p.ownerFilter);
-  const inView = (n: { id: string; date: string; sub: string }) => nodeActive(n.id) && dateOk(n) && ownerOk(n);
-
-  const visibleNodes = nodes.filter(inView);
-  const visibleIds: Record<string, 1> = {};
-  visibleNodes.forEach((n) => { visibleIds[n.id] = 1; });
-
-  const nodeVMs: FlowNodeVM[] = visibleNodes.map((n) => {
+  const nodeVMs: FlowNodeVM[] = nodes.map((n) => {
     const owner = ownerOf(n.sub);
     const isSrc = n.type === 'src';
     const dashed = n.type === 'exit' || n.type === 'merge' || n.type === 'expense';
@@ -217,24 +255,24 @@ export function computeFlow(p: FlowParams): FlowResult {
     const c = hasOwner ? ownerColor(owner) : (n.type === 'expense' ? '#B26B4E' : '#9AA0A6');
     const isSel = sel === n.id;
     const borderC = mixHex(c, '#000000', 0.18);
-    const bgC = mixHex(c, '#FFFFFF', 0.55);
     const typeC = colorOf(n.type);
     return {
       id: n.id,
       isSel,
       amount: fmt(n.amount),
       sub: n.sub,
+      subParts: splitLabelParts(n.sub),
       tag: ASSET_TAG[n.type],
       dateLabel: dueLabelTH(n.date),
-      amountStyle: { fontFamily: "'Lora',serif", fontWeight: 700, fontSize: 12.5, color: mixHex(c, '#000000', 0.35), margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 },
-      subStyle: { fontSize: 9.5, color: mixHex(c, '#000000', 0.5), lineHeight: 1.25 },
+      amountStyle: { fontFamily: "'Lora',serif", fontWeight: 700, fontSize: 12.5, color: 'var(--ink,#2C2A23)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 },
+      subStyle: { fontSize: 9.5, color: 'var(--muted2,#6B6356)', lineHeight: 1.25 },
       boxStyle: {
         position: 'absolute', left: n.x, top: n.y, width: n.w, height: n.h, overflow: 'hidden',
-        background: bgC, color: borderC,
+        background: '#FFFFFF', color: borderC,
         border: (dashed ? '1.5px dashed ' : '1.5px solid ') + borderC,
         borderRadius: 8, padding: `5px 8px 5px ${STRIP_W + 6}px`, boxSizing: 'border-box',
         boxShadow: isSrc
-          ? ('0 0 0 3px ' + bgC + ', 0 0 0 4.5px ' + borderC + (isSel ? ', 0 4px 14px rgba(60,50,30,0.22)' : ''))
+          ? ('0 0 0 3px #FFFFFF, 0 0 0 4.5px ' + borderC + (isSel ? ', 0 4px 14px rgba(60,50,30,0.22)' : ''))
           : (isSel ? '0 4px 14px rgba(60,50,30,0.22)' : '0 1px 3px rgba(60,50,30,0.07)'),
         outline: isSel && !isSrc ? '2px solid ' + borderC : 'none',
         outlineOffset: 2,
@@ -254,7 +292,6 @@ export function computeFlow(p: FlowParams): FlowResult {
   });
 
   const linkVMs: FlowLinkVM[] = links
-    .filter(([f, t]) => visibleIds[f] && visibleIds[t])
     .map(([f, t]) => {
       const s = nodeMap[f], e = nodeMap[t];
       const sx = s.x + s.w, sy = s.y + s.h / 2, tx = e.x, ty = e.y + e.h / 2;
@@ -317,7 +354,10 @@ export function computeFlow(p: FlowParams): FlowResult {
     gridLines = [];
   }
 
-  const ownerOptions = [...new Set(p.assets.flatMap((a) => a.owners))].sort();
+  // List every known family owner, not just ones with an existing asset —
+  // otherwise someone with zero assets so far (e.g. a newly-added owner)
+  // would never appear as a filter option.
+  const ownerOptions = [...KNOWN_OWNERS].sort();
 
   return {
     nodes: nodeVMs,

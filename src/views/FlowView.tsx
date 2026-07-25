@@ -155,7 +155,11 @@ export function FlowView() {
                 </div>
                 <div style={{ ...n.subStyle, display: 'flex', alignItems: 'flex-start', gap: 4, minWidth: 0 }}>
                   <span style={{ flexShrink: 0, marginTop: 1 }}><BankBadge text={n.sub} size={11} /></span>
-                  <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n.sub}</span>
+                  <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                    {n.subParts.map((part, i) => (
+                      <span key={i} style={{ color: part.color, fontWeight: part.bold ? 700 : undefined }}>{part.text}</span>
+                    ))}
+                  </span>
                 </div>
               </div>
             ))}

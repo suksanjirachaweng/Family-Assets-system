@@ -16,6 +16,10 @@ const OWNER_BASE: Record<string, string> = {
   'สุภาดา': '#0891B2',
 };
 
+/** Known individual owner names, for splitting a "name · owner · owner" label
+ *  into its trailing owner segments (see splitOwnerLabel in flowLayout.ts). */
+export const KNOWN_OWNERS: string[] = Object.keys(OWNER_BASE);
+
 const hexToRgb = (hex: string) => hex.replace('#', '').match(/../g)!.map((h) => parseInt(h, 16));
 const rgbToHex = (rgb: number[]) => '#' + rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
 

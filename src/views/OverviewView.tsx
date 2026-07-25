@@ -109,20 +109,6 @@ export function OverviewView() {
           <div style={statSub}>≈ {fmt(yearIncome / 12)} / เดือน</div>
         </div>
         <div style={statCardStyle}>
-          <div style={statLabel}>ใกล้ครบกำหนด (90 วัน)</div>
-          <div style={{ ...statBig, color: '#B26B4E' }}>
-            {dueSoon.length} <span style={{ fontSize: 15, fontFamily: "'IBM Plex Sans Thai'", color: 'var(--muted,#8A8270)' }}>รายการ</span>
-          </div>
-          <div style={statSub}>{fmt(dueSoon.reduce((s, x) => s + x.a.amount, 0))}</div>
-        </div>
-        <div style={statCardStyle}>
-          <div style={statLabel}>ทองคำสะสม</div>
-          <div style={{ ...statBig, color: '#B98E2B' }}>
-            {totalGoldBaht} <span style={{ fontSize: 15, fontFamily: "'IBM Plex Sans Thai'", color: 'var(--muted,#8A8270)' }}>บาททอง</span>
-          </div>
-          <div style={statSub}>{fmt(totalGoldBaht * GOLD_PRICE_PER_BAHT)}</div>
-        </div>
-        <div style={statCardStyle}>
           <div style={statLabel}>กำไร/ขาดทุนรวม (หุ้น+กองทุน · ยังไม่รับรู้)</div>
           <div style={{ ...statBig, color: plUp ? '#1F8A4C' : '#C0392B' }}>
             {(plUp ? '+' : '') + fmt(plGain)}{' '}
@@ -132,9 +118,42 @@ export function OverviewView() {
           </div>
           <div style={statSub}>ทุน {fmt(plCost)} → ตลาด {fmt(plValue)}</div>
         </div>
+        <div style={statCardStyle}>
+          <div style={statLabel}>ทองคำสะสม</div>
+          <div style={{ ...statBig, color: '#B98E2B' }}>
+            {totalGoldBaht} <span style={{ fontSize: 15, fontFamily: "'IBM Plex Sans Thai'", color: 'var(--muted,#8A8270)' }}>บาททอง</span>
+          </div>
+          <div style={statSub}>{fmt(totalGoldBaht * GOLD_PRICE_PER_BAHT)}</div>
+        </div>
+        <div style={statCardStyle}>
+          <div style={statLabel}>ใกล้ครบกำหนด (90 วัน)</div>
+          <div style={{ ...statBig, color: '#B26B4E' }}>
+            {dueSoon.length} <span style={{ fontSize: 15, fontFamily: "'IBM Plex Sans Thai'", color: 'var(--muted,#8A8270)' }}>รายการ</span>
+          </div>
+          <div style={statSub}>{fmt(dueSoon.reduce((s, x) => s + x.a.amount, 0))}</div>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 18 }}>
+        {/* by owner */}
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>แยกตามเจ้าของ</div>
+          <EnSub text="By account holder" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 15, marginTop: 8 }}>
+            {ownerSummary.map((o) => (
+              <div key={o.name}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 5 }}>
+                  <span style={{ fontWeight: 600 }}>{o.name}</span>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--ink,#3C4A33)', fontWeight: 600 }}>{fmt(o.total)}</span>
+                </div>
+                <div style={{ height: 9, borderRadius: 5, background: 'var(--inset,#EDE6D6)', overflow: 'hidden' }}>
+                  <div style={{ width: `${o.pct}%`, height: '100%', background: ownerColor(o.name.replace(/ · /g, '·')), borderRadius: 5 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
         {/* allocation */}
         <Card>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>สัดส่วนตามประเภท</div>
@@ -181,25 +200,6 @@ export function OverviewView() {
                 </div>
               );
             })}
-          </div>
-        </Card>
-
-        {/* by owner */}
-        <Card>
-          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>แยกตามเจ้าของ</div>
-          <EnSub text="By account holder" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 15, marginTop: 8 }}>
-            {ownerSummary.map((o) => (
-              <div key={o.name}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 5 }}>
-                  <span style={{ fontWeight: 600 }}>{o.name}</span>
-                  <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--ink,#3C4A33)', fontWeight: 600 }}>{fmt(o.total)}</span>
-                </div>
-                <div style={{ height: 9, borderRadius: 5, background: 'var(--inset,#EDE6D6)', overflow: 'hidden' }}>
-                  <div style={{ width: `${o.pct}%`, height: '100%', background: ownerColor(o.name.replace(/ · /g, '·')), borderRadius: 5 }} />
-                </div>
-              </div>
-            ))}
           </div>
         </Card>
 
