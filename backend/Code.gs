@@ -518,6 +518,21 @@ function migrateAddGoldBuyPrice() {
   Logger.log('เพิ่มคอลัมน์ goldBuyPrice แล้ว ที่คอลัมน์ ' + col);
 }
 
+/** One-time cleanup: deletes every row of sample/seed data from Assets,
+ *  Expenses, and Moves (keeps the header row so the sheet stays usable),
+ *  so real data can be entered fresh. Does NOT touch Settings — LINE groups,
+ *  gold price, notification config, etc. are left exactly as configured.
+ *  Run once from the Apps Script editor; takes effect immediately (no
+ *  redeploy needed since nothing here goes through the Web App URL). */
+function clearSampleData() {
+  [SHEETS.ASSETS, SHEETS.EXPENSES, SHEETS.MOVES].forEach(function (name) {
+    var s = sheet_(name);
+    var lastRow = s.getLastRow();
+    if (lastRow > 1) s.deleteRows(2, lastRow - 1);
+  });
+  Logger.log('ลบข้อมูลตัวอย่างเรียบร้อยแล้ว (Assets, Expenses, Moves) — Settings ไม่ถูกแตะต้อง');
+}
+
 function ensureSheet_(ss, name, headers) {
   var s = ss.getSheetByName(name);
   if (!s) s = ss.insertSheet(name);

@@ -53,6 +53,11 @@ export function OverviewView() {
   const upcoming = withDue.slice(0, 4);
   const dueSoon = withDue.filter((x) => x.days <= 90 && x.days >= 0);
 
+  const totalGoldBaht = useMemo(
+    () => assets.filter((a) => a.type === 'gold').reduce((s, a) => s + (a.goldBaht ?? 0), 0),
+    [assets],
+  );
+
   const yearIncome = assets.filter((a) => (a.rate ?? 0) > 0 && a.type !== 'gold').reduce((s, a) => s + netInterest(a), 0);
 
   let plCost = 0, plValue = 0;
@@ -74,7 +79,7 @@ export function OverviewView() {
         en="Portfolio Overview"
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ fontSize: 13, color: 'var(--muted,#8A8270)' }}>{assets.length} รายการ · 3 เจ้าของ</div>
+            <div style={{ fontSize: 13, color: 'var(--muted,#8A8270)' }}>{assets.length} รายการ · {ownerSummary.length} เจ้าของ</div>
             <button
               onClick={doPrint}
               className="fa-noprint"
@@ -113,9 +118,9 @@ export function OverviewView() {
         <div style={statCardStyle}>
           <div style={statLabel}>ทองคำสะสม</div>
           <div style={{ ...statBig, color: '#B98E2B' }}>
-            30 <span style={{ fontSize: 15, fontFamily: "'IBM Plex Sans Thai'", color: 'var(--muted,#8A8270)' }}>บาททอง</span>
+            {totalGoldBaht} <span style={{ fontSize: 15, fontFamily: "'IBM Plex Sans Thai'", color: 'var(--muted,#8A8270)' }}>บาททอง</span>
           </div>
-          <div style={statSub}>{fmt(30 * GOLD_PRICE_PER_BAHT)}</div>
+          <div style={statSub}>{fmt(totalGoldBaht * GOLD_PRICE_PER_BAHT)}</div>
         </div>
         <div style={statCardStyle}>
           <div style={statLabel}>กำไร/ขาดทุนรวม (หุ้น+กองทุน · ยังไม่รับรู้)</div>
