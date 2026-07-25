@@ -158,10 +158,36 @@ export function OverviewView() {
         <Card>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>สัดส่วนตามประเภท</div>
           <EnSub text="Allocation by type" />
-          <div style={{ display: 'flex', height: 20, borderRadius: 10, overflow: 'hidden', margin: '10px 0 18px', background: 'var(--inset,#EDE6D6)' }}>
-            {typeSummary.map((seg) => (
-              <div key={seg.key} style={{ flex: `0 0 ${seg.pct}%`, background: seg.color }} />
-            ))}
+          <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0 18px' }}>
+            <svg width={160} height={160} viewBox="0 0 160 160">
+              <circle cx={80} cy={80} r={60} fill="none" stroke="var(--inset,#EDE6D6)" strokeWidth={24} />
+              {(() => {
+                const r = 60;
+                const circumference = 2 * Math.PI * r;
+                let acc = 0;
+                return typeSummary.map((seg) => {
+                  const dash = (seg.pct / 100) * circumference;
+                  const el = (
+                    <circle
+                      key={seg.key}
+                      cx={80}
+                      cy={80}
+                      r={r}
+                      fill="none"
+                      stroke={seg.color}
+                      strokeWidth={24}
+                      strokeDasharray={`${dash} ${circumference - dash}`}
+                      strokeDashoffset={-acc}
+                      transform="rotate(-90 80 80)"
+                    />
+                  );
+                  acc += dash;
+                  return el;
+                });
+              })()}
+              <text x={80} y={76} textAnchor="middle" fontSize={11} fill="var(--muted,#8A8270)" fontFamily="'IBM Plex Sans Thai'">รวม</text>
+              <text x={80} y={94} textAnchor="middle" fontSize={14} fontWeight={700} fill="var(--ink,#3C4A33)" fontFamily="'Lora',serif">{fmtM(total)}</text>
+            </svg>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {typeSummary.map((seg) => {
