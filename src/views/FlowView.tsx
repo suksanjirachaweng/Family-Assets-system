@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppStore, type FlowRange } from '@/store/useAppStore';
+import { useAppStore, type FlowDateStep, type FlowRange } from '@/store/useAppStore';
 import { computeFlow } from '@/lib/flowLayout';
 import { BankBadge } from '@/components/common/BankBadge';
 
@@ -13,27 +13,16 @@ export function FlowView() {
   const flowZoom = useAppStore((s) => s.flowZoom);
   const flowXAxis = useAppStore((s) => s.flowXAxis);
   const flowDateStep = useAppStore((s) => s.flowDateStep);
+  const flowOwnerFilter = useAppStore((s) => s.flowOwnerFilter);
   const set = useAppStore((s) => s.set);
   const patch = useAppStore((s) => s.patch);
 
   const flow = useMemo(
-    () => computeFlow({ moves, assets, flowSel, flowRange, flowFrom, flowTo, xAxisMode: flowXAxis, dateStep: flowDateStep }),
-    [moves, assets, flowSel, flowRange, flowFrom, flowTo, flowXAxis, flowDateStep],
+    () => computeFlow({ moves, assets, flowSel, flowRange, flowFrom, flowTo, xAxisMode: flowXAxis, dateStep: flowDateStep, ownerFilter: flowOwnerFilter }),
+    [moves, assets, flowSel, flowRange, flowFrom, flowTo, flowXAxis, flowDateStep, flowOwnerFilter],
   );
 
   const hasDateFilter = !!(flowFrom || flowTo);
-  const presetBtn = (k: FlowRange) => {
-    const active = flowRange === k;
-    return (
-      <button
-        key={k}
-        onClick={() => patch({ flowRange: k, flowFrom: '', flowTo: '' })}
-        style={{ padding: '6px 12px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13, fontWeight: 700, background: active ? '#5E7350' : 'transparent', color: active ? '#FBF8F1' : '#6B6356' }}
-      >
-        {k}
-      </button>
-    );
-  };
 
   return (
     <section>
@@ -49,28 +38,8 @@ export function FlowView() {
         </div>
       ) : (
       <>
-      {/* legend */}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted,#9A917F)' }}>กรอบ = เจ้าของ</span>
-        {flow.ownerLegend.map((seg) => (
-          <div key={seg.label} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--muted2,#6B6356)' }}>
-            <span style={seg.dotStyle} />{seg.label}
-          </div>
-        ))}
-        <span style={{ width: 1, height: 18, background: '#E2D9C8' }} />
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted,#9A917F)' }}>ป้ายในกล่อง = ประเภท</span>
-        {flow.typeLegend.map((seg) => (
-          <div key={seg.label} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--muted2,#6B6356)' }}>
-            <span style={seg.dotStyle} />{seg.label}
-          </div>
-        ))}
-        <span style={{ width: 1, height: 18, background: '#E2D9C8' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--muted2,#6B6356)' }}>
-          <span style={{ width: 15, height: 11, borderRadius: 3, background: '#EDEAE2', border: '1.5px solid #9AA0A6', boxShadow: '0 0 0 2px #EDEAE2,0 0 0 3px #9AA0A6', display: 'inline-block', flexShrink: 0, marginRight: 2 }} />
-          เงินใหม่จากภายนอก / ต้นตอเงิน
-        </div>
-      </div>
-
+      {/* toolbar stays pinned below the app header while the (often very tall) diagram scrolls */}
+      <div style={{ position: 'sticky', top: 130, zIndex: 15, background: 'var(--bg,#F4EFE6)', paddingTop: 6, marginTop: -6 }}>
       {/* toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 10, padding: 3 }}>
@@ -97,26 +66,43 @@ export function FlowView() {
         {flowXAxis === 'date' && (
           <>
             <div style={{ width: 1, height: 26, background: '#E2D9C8' }} />
-            <div style={{ display: 'flex', background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 10, padding: 3 }}>
-              {(['month', '2week', 'week'] as const).map((step) => {
-                const active = flowDateStep === step;
-                return (
-                  <button
-                    key={step}
-                    onClick={() => set('flowDateStep', step)}
-                    style={{ padding: '6px 12px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13, fontWeight: 700, background: active ? '#5E7350' : 'transparent', color: active ? '#FBF8F1' : '#6B6356' }}
-                  >
-                    {step === 'month' ? 'ช่องละเดือน' : step === '2week' ? 'ช่องละ 2 สัปดาห์' : 'ช่องละสัปดาห์'}
-                  </button>
-                );
-              })}
-            </div>
+            <select
+              value={flowDateStep}
+              onChange={(e) => set('flowDateStep', e.target.value as FlowDateStep)}
+              style={selectStyle}
+            >
+              <option value="week">ช่องละ 1 สัปดาห์</option>
+              <option value="2week">ช่องละ 2 สัปดาห์</option>
+              <option value="month">ช่องละ 1 เดือน</option>
+              <option value="3month">ช่องละ 3 เดือน</option>
+              <option value="6month">ช่องละ 6 เดือน</option>
+              <option value="year">ช่องละ 1 ปี</option>
+            </select>
           </>
         )}
         <div style={{ width: 1, height: 26, background: '#E2D9C8' }} />
-        <div style={{ display: 'flex', background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 10, padding: 3 }}>
-          {(['1Y', '3Y', '5Y', 'ALL'] as FlowRange[]).map(presetBtn)}
-        </div>
+        <select
+          value={flowRange ?? ''}
+          onChange={(e) => patch({ flowRange: e.target.value as FlowRange, flowFrom: '', flowTo: '' })}
+          style={selectStyle}
+        >
+          {flowRange === null && <option value="">กำหนดเอง</option>}
+          <option value="1Y">1Y</option>
+          <option value="3Y">3Y</option>
+          <option value="5Y">5Y</option>
+          <option value="ALL">ALL</option>
+        </select>
+        <div style={{ width: 1, height: 26, background: '#E2D9C8' }} />
+        <select
+          value={flowOwnerFilter ?? ''}
+          onChange={(e) => set('flowOwnerFilter', e.target.value || null)}
+          style={selectStyle}
+        >
+          <option value="">แสดงทุกเจ้าของ</option>
+          {flow.ownerOptions.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 10, padding: '5px 11px' }}>
           <span style={{ fontSize: 13, color: 'var(--muted,#9A917F)' }}>ช่วงวันที่</span>
           <input type="date" value={flow.fromVal} min={flow.minDate} max={flow.maxDate} onChange={(e) => patch({ flowFrom: e.target.value, flowRange: null })} style={dateInput} />
@@ -134,6 +120,7 @@ export function FlowView() {
         ) : (
           <span style={{ fontSize: 12.5, color: 'var(--muted,#A89F8C)' }}>คลิกที่กล่องใดๆ เพื่อดูเฉพาะเส้นทางของบัญชีนั้น</span>
         )}
+      </div>
       </div>
 
       {/* canvas */}
@@ -186,6 +173,7 @@ export function FlowView() {
 
 const zoomBtn: React.CSSProperties = { width: 32, height: 32, border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--muted2,#6B6356)', borderRadius: 7 };
 const dateInput: React.CSSProperties = { border: '1px solid var(--border2,#E2D9C8)', borderRadius: 7, padding: '5px 8px', fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13, color: 'var(--text,#2C2A23)', background: 'var(--surface2,#fff)' };
+const selectStyle: React.CSSProperties = { border: '1px solid var(--border2,#E2D9C8)', borderRadius: 10, padding: '8px 10px', fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13, fontWeight: 600, color: 'var(--text,#2C2A23)', background: 'var(--surface,#FBF8F1)', cursor: 'pointer' };
 
 function EnSub({ text }: { text: string }) {
   const showEnglish = useAppStore((s) => s.showEnglish);

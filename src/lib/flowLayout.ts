@@ -7,8 +7,14 @@ import type { FlowRange, FlowXAxis } from '@/store/useAppStore';
 import type { MoveRecord } from '@/api/client';
 
 const NW = 176, NH = 60, STRIP_W = 20, COLW = 220, PADX = 20, PADY = 16, ROWH = 64, NODE_GAP = 14;
-type FlowDateStep = 'month' | '2week' | 'week';
-const PX_PER_DAY_BY_STEP: Record<FlowDateStep, number> = { month: 4, '2week': 8.5, week: 17 };
+type FlowDateStep = 'week' | '2week' | 'month' | '3month' | '6month' | 'year';
+const PX_PER_DAY_BY_STEP: Record<FlowDateStep, number> = {
+  week: 120 / 7, '2week': 120 / 14, month: 120 / 30, '3month': 120 / 90, '6month': 120 / 180, year: 120 / 365,
+};
+/** Calendar months per gridline for the month-anchored granularities. */
+const STEP_MONTHS_BY_STEP: Partial<Record<FlowDateStep, number>> = {
+  month: 1, '3month': 3, '6month': 6, year: 12,
+};
 
 const daysBetween = (a: string, b: string) => Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
 
@@ -40,6 +46,7 @@ export interface FlowParams {
   flowTo: string;
   xAxisMode: FlowXAxis;
   dateStep: FlowDateStep;
+  ownerFilter: string | null;
 }
 
 export interface FlowNodeVM {
@@ -67,6 +74,7 @@ export interface FlowResult {
   gridLines: CSSProperties[];
   ownerLegend: LegendVM[];
   typeLegend: LegendVM[];
+  ownerOptions: string[];
   flowW: number;
   flowH: number;
   treeCount: number;
@@ -79,7 +87,7 @@ export interface FlowResult {
 }
 
 const EMPTY_FLOW: FlowResult = {
-  nodes: [], links: [], stages: [], gridLines: [], ownerLegend: [], typeLegend: [],
+  nodes: [], links: [], stages: [], gridLines: [], ownerLegend: [], typeLegend: [], ownerOptions: [],
   flowW: 0, flowH: 0, treeCount: 0, nodeTotal: 0, minDate: '', maxDate: '',
   selLabel: '', fromVal: '', toVal: '',
 };
@@ -194,7 +202,8 @@ export function computeFlow(p: FlowParams): FlowResult {
     from = f.toISOString().slice(0, 10); to = maxDate;
   } else { from = p.flowFrom; to = p.flowTo; }
   const dateOk = (n: { date: string }) => (!from || n.date >= from) && (!to || n.date <= to);
-  const inView = (n: { id: string; date: string }) => nodeActive(n.id) && dateOk(n);
+  const ownerOk = (n: { sub: string }) => !p.ownerFilter || n.sub.includes(p.ownerFilter);
+  const inView = (n: { id: string; date: string; sub: string }) => nodeActive(n.id) && dateOk(n) && ownerOk(n);
 
   const visibleNodes = nodes.filter(inView);
   const visibleIds: Record<string, 1> = {};
@@ -287,10 +296,10 @@ export function computeFlow(p: FlowParams): FlowResult {
         dayOffset += stepDays;
       }
     } else {
-      const stepMonths = totalDays > 900 ? 6 : totalDays > 450 ? 3 : totalDays > 200 ? 2 : 1;
+      const stepMonths = STEP_MONTHS_BY_STEP[p.dateStep] ?? 1;
       const cur = new Date(start.getFullYear(), start.getMonth(), 1);
       let guard = 0;
-      while (cur.getTime() <= end.getTime() && guard < 60) {
+      while (cur.getTime() <= end.getTime() && guard < 200) {
         guard++;
         const dayOffset = Math.round((cur.getTime() - start.getTime()) / 86400000);
         const x = PADX + Math.max(0, dayOffset) * pxPerDay;
@@ -308,6 +317,8 @@ export function computeFlow(p: FlowParams): FlowResult {
     gridLines = [];
   }
 
+  const ownerOptions = [...new Set(p.assets.flatMap((a) => a.owners))].sort();
+
   return {
     nodes: nodeVMs,
     links: linkVMs,
@@ -315,6 +326,7 @@ export function computeFlow(p: FlowParams): FlowResult {
     gridLines,
     ownerLegend,
     typeLegend,
+    ownerOptions,
     flowW,
     flowH,
     treeCount: roots.length,
