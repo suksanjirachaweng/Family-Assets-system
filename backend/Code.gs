@@ -333,7 +333,7 @@ function handleGroupJoin_(groupId) {
  *  text instead of a real mention. Detect both: a real mention object
  *  (`message.mention.mentionees[].isSelf`, in case it ever does register)
  *  OR the account name appearing literally in the message text. */
-var BOT_NAME_ = 'NSL_FAMILY_ASSET';
+var BOT_NAME_ = 'NSL_ASSET';
 
 /** Ordinary chat in a group is ignored completely — the bot only reacts when
  *  tagged (see BOT_NAME_ above for how "tagged" is detected). If a mention
