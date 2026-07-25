@@ -5,6 +5,7 @@ import { BankBadge } from '@/components/common/BankBadge';
 
 export function FlowView() {
   const moves = useAppStore((s) => s.moves);
+  const assets = useAppStore((s) => s.assets);
   const flowSel = useAppStore((s) => s.flowSel);
   const flowRange = useAppStore((s) => s.flowRange);
   const flowFrom = useAppStore((s) => s.flowFrom);
@@ -15,8 +16,8 @@ export function FlowView() {
   const patch = useAppStore((s) => s.patch);
 
   const flow = useMemo(
-    () => computeFlow({ moves, flowSel, flowRange, flowFrom, flowTo, xAxisMode: flowXAxis }),
-    [moves, flowSel, flowRange, flowFrom, flowTo, flowXAxis],
+    () => computeFlow({ moves, assets, flowSel, flowRange, flowFrom, flowTo, xAxisMode: flowXAxis }),
+    [moves, assets, flowSel, flowRange, flowFrom, flowTo, flowXAxis],
   );
 
   const hasDateFilter = !!(flowFrom || flowTo);

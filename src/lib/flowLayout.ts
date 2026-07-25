@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { buildFlowGraph } from '@/data/flowGraph';
-import { TYPES, type FlowNodeType } from '@/data/types';
+import { TYPES, type Asset, type FlowNodeType } from '@/data/types';
 import { dueLabelTH, fmt, thMon } from './format';
 import { ownerColor, mixHex } from './colors';
 import type { FlowRange, FlowXAxis } from '@/store/useAppStore';
@@ -30,6 +30,7 @@ const ownerOf = (lbl: string) => {
 
 export interface FlowParams {
   moves: MoveRecord[];
+  assets: Asset[];
   flowSel: string | null;
   flowRange: FlowRange;
   flowFrom: string;
@@ -79,7 +80,7 @@ const EMPTY_FLOW: FlowResult = {
 };
 
 export function computeFlow(p: FlowParams): FlowResult {
-  const G = buildFlowGraph(p.moves);
+  const G = buildFlowGraph(p.moves, p.assets);
   if (!G.nodes.length) return EMPTY_FLOW;
   const gmap: Record<string, (typeof G.nodes)[number]> = {};
   G.nodes.forEach((n) => { gmap[n.id] = n; });

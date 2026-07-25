@@ -1,5 +1,6 @@
-import type { FlowGraph, FlowNode, MoveLeg } from './types';
+import type { Asset, FlowGraph, FlowNode, MoveLeg } from './types';
 import type { MoveRecord } from '@/api/client';
+import { todayISO } from '@/lib/format';
 
 /**
  * Turns real recorded moves (each with structured source/destination legs +
@@ -10,8 +11,12 @@ import type { MoveRecord } from '@/api/client';
  * used as a source in a future move). One-off legs — new external income
  * ('src') or money leaving the portfolio ('exit') — aren't reusable accounts,
  * so they're scoped per-move to avoid unrelated moves colliding.
+ *
+ * Any current asset that has never appeared in a move (neither as a source
+ * nor a destination) is added as its own unlinked node dated today, so every
+ * account currently held shows up under "ต้นทาง" even before it's ever moved.
  */
-export function buildFlowGraph(moves: MoveRecord[]): FlowGraph {
+export function buildFlowGraph(moves: MoveRecord[], assets: Asset[]): FlowGraph {
   const nodes: FlowNode[] = [];
   const seen: Record<string, true> = {};
   const edges: [string, string][] = [];
@@ -41,6 +46,14 @@ export function buildFlowGraph(moves: MoveRecord[]): FlowGraph {
       const from = srcIds[srcId], to = dstIds[destId];
       if (from && to) edges.push([from, to]);
     });
+  });
+
+  const today = todayISO();
+  assets.forEach((a) => {
+    if (seen[a.id]) return;
+    seen[a.id] = true;
+    const label = a.name ? `${a.name} · ${a.owners.join(' · ')}` : a.owners.join(' · ');
+    nodes.push({ id: a.id, type: a.type, amount: a.amount, label, date: today });
   });
 
   return { nodes, edges };
