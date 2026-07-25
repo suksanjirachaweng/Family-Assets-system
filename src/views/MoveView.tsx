@@ -311,8 +311,8 @@ export function MoveView() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(330px,1fr))', gap: 18, alignItems: 'start' }}>
         {/* step 1 — select */}
-        <div style={cardBlue}>
-          <StepHead n={1} label="เลือกรายการต้นทาง" color="#2563EB" />
+        <div style={cardRed}>
+          <StepHead n={1} label="เลือกรายการต้นทาง" color="#DC2626" />
           <div style={{ fontSize: 13, color: 'var(--muted,#9A917F)', marginBottom: 14, paddingLeft: 31 }}>เลือกได้มากกว่า 1 รายการเพื่อรวมยอด</div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -558,7 +558,7 @@ export function MoveView() {
 }
 
 const card: React.CSSProperties = { background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border,#E8E0CF)', borderRadius: 16, padding: 22 };
-const cardBlue: React.CSSProperties = { ...card, background: '#EFF6FF', border: '1px solid #93C5FD' };
+const cardRed: React.CSSProperties = { ...card, background: '#FEF2F2', border: '1px solid #FCA5A5' };
 const cardYellow: React.CSSProperties = { ...card, background: '#FEF3C7', border: '1px solid #D4A017' };
 const incomeInputStyle: React.CSSProperties = { width: '100%', padding: '10px 12px', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 9, background: 'var(--surface2,#fff)', fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13.5, color: 'var(--text,#2C2A23)', boxSizing: 'border-box' };
 const dateInputStyle: React.CSSProperties = { padding: '6px 9px', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 8, background: 'var(--surface2,#fff)', fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 12.5, color: 'var(--text,#2C2A23)' };
