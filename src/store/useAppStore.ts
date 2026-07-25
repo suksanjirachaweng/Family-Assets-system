@@ -111,7 +111,7 @@ export const useAppStore = create<AppState>((setState) => ({
   lineMaturity: true,
   lineMonthly: true,
   lineLargeMove: true,
-  theme: 'dark',
+  theme: 'teal',
   showEnglish: true,
 
   assets: computeAssets(),

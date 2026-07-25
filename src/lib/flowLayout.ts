@@ -72,8 +72,15 @@ export interface FlowResult {
   toVal: string;
 }
 
+const EMPTY_FLOW: FlowResult = {
+  nodes: [], links: [], stages: [], gridLines: [], ownerLegend: [], typeLegend: [],
+  flowW: 0, flowH: 0, treeCount: 0, nodeTotal: 0, minDate: '', maxDate: '',
+  selLabel: '', fromVal: '', toVal: '',
+};
+
 export function computeFlow(p: FlowParams): FlowResult {
   const G = buildFlowGraph(p.expenseExpanded);
+  if (!G.nodes.length) return EMPTY_FLOW;
   const gmap: Record<string, (typeof G.nodes)[number]> = {};
   G.nodes.forEach((n) => { gmap[n.id] = n; });
   const childrenOf: Record<string, string[]> = {}, parentsOf: Record<string, string[]> = {};

@@ -1,90 +1,11 @@
-import type { FlowGraph, FlowNode, FlowNodeType } from './types';
+import type { FlowGraph } from './types';
 
 /**
- * Money-flow graph (ported 1:1 from prototype flowGraph()).
- * When `expenseExpanded` is true the savings→expense bundle (t8) is broken
- * out into individual expense leaves; otherwise it shows a single grouped node.
+ * Money-flow graph. Previously held hardcoded sample data ported from the
+ * design prototype; that never reflected real assets/moves, so it's been
+ * cleared out. This view has no real data source yet — it needs to be wired
+ * up to recorded "ขาย/ย้ายเงิน" moves once that history starts accumulating.
  */
-export function buildFlowGraph(expenseExpanded: boolean): FlowGraph {
-  const N: FlowNode[] = [];
-  const E: [string, string][] = [];
-  const add = (id: string, type: FlowNodeType, amount: number, label: string, date: string) =>
-    N.push({ id, type, amount, label, date });
-  const link = (a: string, b: string) => E.push([a, b]);
-
-  // 1 — รายรับจากสินค้า → GULF → ครบกำหนด → ลงทุนใหม่
-  add('t1s', 'src', 4000000, 'รายรับจากสินค้า 1', '2026-03-15');
-  add('t1a', 'bond', 3000000, 'หุ้นกู้ GULF · วิวัฒน์', '2026-03-15');
-  add('t1b', 'fd', 1000000, 'ฝากประจำ ธ.ออมสิน · ชัย·ธีรดา', '2026-03-15');
-  link('t1s', 't1a'); link('t1s', 't1b');
-  add('t1c', 'fd', 1000000, 'ฝากประจำ ธ.ออมสิน · ชัย·ธีรดา', '2026-07-20');
-  add('t1d', 'fd', 1100000, 'ฝากประจำ ธ.ออมสิน · วิวัฒน์', '2026-07-20');
-  add('t1e', 'exit', 1000000, 'นำไปซื้อเครื่องจักร', '2026-07-20');
-  link('t1a', 't1c'); link('t1a', 't1d'); link('t1a', 't1e');
-  add('t1m', 'merge', 2250000, 'รวมยอดครบกำหนด', '2027-01-05');
-  link('t1c', 't1m'); link('t1d', 't1m');
-  add('t1f', 'bond', 1000000, 'หุ้นกู้ CPALL · วิวัฒน์', '2027-01-05');
-  add('t1g', 'fd', 1250000, 'ฝากประจำ ธ.กสิกร · ธีรดา', '2027-01-05');
-  link('t1m', 't1f'); link('t1m', 't1g');
-
-  // 2 — ขายกองทุน → กระจาย
-  add('t2a', 'fund', 3200000, 'ขายกองทุน K-USA · ธีรดา', '2026-09-10');
-  add('t2b', 'stock', 1200000, 'หุ้น AOT · ธีรดา', '2026-09-12');
-  add('t2c', 'fd', 1500000, 'ฝากประจำ ธ.กสิกร · ธีรดา', '2026-09-12');
-  add('t2d', 'sav', 500000, 'ออมทรัพย์ · ธีรดา', '2026-09-12');
-  link('t2a', 't2b'); link('t2a', 't2c'); link('t2a', 't2d');
-
-  // 3 — ขายที่ดิน → ลงทุนก้อนใหญ่
-  add('t3a', 'land', 18500000, 'ขายที่ดิน บางพระ · ชัย·ธีรดา', '2027-02-18');
-  add('t3b', 'bond', 8000000, 'หุ้นกู้ PTTGC · ชัย·ธีรดา', '2027-02-25');
-  add('t3c', 'fund', 5000000, 'กองทุน ONE-UGG · ชัย', '2027-02-25');
-  add('t3d', 'fd', 3500000, 'ฝากประจำ ธ.ไทยพาณิชย์ · ธีรดา', '2027-02-25');
-  add('t3e', 'exit', 2000000, 'แบ่งมรดกบุตร', '2027-02-25');
-  link('t3a', 't3b'); link('t3a', 't3c'); link('t3a', 't3d'); link('t3a', 't3e');
-
-  // 4 — รวมฝากประจำหลายบัญชี → ซื้อคอนโด
-  add('t4a', 'fd', 1450000, 'ฝากประจำ ธ.กสิกร · ธีรดา', '2026-10-01');
-  add('t4b', 'fd', 1800000, 'ฝากประจำ ธ.ไทยพาณิชย์ · ชัย', '2026-10-05');
-  add('t4c', 'fd', 720000, 'ฝากประจำ ธ.กรุงไทย · ครอบครัว', '2026-10-12');
-  add('t4m', 'merge', 3970000, 'รวมยอด 3 บัญชี', '2026-10-20');
-  link('t4a', 't4m'); link('t4b', 't4m'); link('t4c', 't4m');
-  add('t4d', 'land', 3200000, 'คอนโด ศรีราชา · ธีรดา', '2026-10-25');
-  add('t4e', 'sav', 770000, 'ออมทรัพย์ · ครอบครัว', '2026-10-25');
-  link('t4m', 't4d'); link('t4m', 't4e');
-
-  // 5 — ขายทองคำ → ฝากประจำ
-  add('t5a', 'gold', 1530000, 'ขายทองคำแท่ง · วิวัฒน์', '2026-08-08');
-  add('t5b', 'fd', 1530000, 'ฝากประจำ ธ.กรุงเทพ · วิวัฒน์', '2026-08-10');
-  link('t5a', 't5b');
-
-  // 6 — ขายหุ้น → ลงทุนใหม่
-  add('t6a', 'stock', 1480000, 'ขายหุ้น DELTA · ธีรดา', '2026-11-15');
-  add('t6b', 'fund', 900000, 'กองทุน B-INNOTECH · ธีรดา', '2026-11-18');
-  add('t6c', 'sav', 580000, 'ออมทรัพย์ · ธีรดา', '2026-11-18');
-  link('t6a', 't6b'); link('t6a', 't6c');
-
-  // 7 — รายรับใหม่จากภายนอก (new input) → ลงทุนใหม่
-  add('t7s', 'src', 2500000, 'รายรับจากสินค้า 2 · เงินใหม่', '2027-01-20');
-  add('t7a', 'bond', 1500000, 'หุ้นกู้ GULF (ชุด 2) · ชัย·ธีรดา', '2027-01-22');
-  add('t7b', 'fd', 1000000, 'ฝากประจำ ธ.กรุงศรี · ชัย·ธีรดา', '2027-01-22');
-  link('t7s', 't7a'); link('t7s', 't7b');
-
-  // 8 — บัญชีออมทรัพย์ → ค่าใช้จ่าย (กดเพื่อ ดูรวมกลุ่ม / แยกรายการ)
-  add('t8s', 'sav', 1250000, 'ออมทรัพย์ ธ.กรุงเทพ · วิวัฒน์', '2026-05-01');
-  const exps: [string, string, number, string][] = [
-    ['ค่าเทอมลูก เทอม 1', 'การศึกษา', 185000, '2026-05-12'],
-    ['ค่าซ่อมหลังคาบ้าน', 'ที่อยู่อาศัย', 96000, '2026-05-28'],
-    ['เบี้ยประกันสุขภาพครอบครัว', 'ประกัน', 142000, '2026-06-03'],
-    ['ค่ารักษาพยาบาล รพ.', 'สุขภาพ', 58500, '2026-06-15'],
-    ['ทริปครอบครัว เชียงใหม่', 'ท่องเที่ยว', 124000, '2026-06-22'],
-    ['ภาษีที่ดินประจำปี', 'ภาษี', 47000, '2026-06-25'],
-  ];
-  if (expenseExpanded) {
-    exps.forEach((e, i) => { add('t8e' + i, 'exit', e[2], e[0] + ' · ' + e[1], e[3]); link('t8s', 't8e' + i); });
-  } else {
-    const tot = exps.reduce((s, e) => s + e[2], 0);
-    add('t8g', 'expense', tot, 'ค่าใช้จ่าย ' + exps.length + ' รายการ ▸ กดเพื่อแยก', '2026-06-25');
-    link('t8s', 't8g');
-  }
-  return { nodes: N, edges: E };
+export function buildFlowGraph(_expenseExpanded: boolean): FlowGraph {
+  return { nodes: [], edges: [] };
 }

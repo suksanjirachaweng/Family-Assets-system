@@ -37,9 +37,16 @@ export function FlowView() {
     <section>
       <div style={{ marginBottom: 8 }}>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em' }}>เส้นทางการโยกย้ายเงิน</h1>
-        <EnSub text="Money flow — รายรับจากสินค้า 1" />
+        <EnSub text="Money flow" />
       </div>
 
+      {flow.nodeTotal === 0 ? (
+        <div style={{ background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border,#E8E0CF)', borderRadius: 16, padding: '48px 24px', textAlign: 'center', color: 'var(--muted,#9A917F)' }}>
+          <div style={{ fontSize: 15, marginBottom: 6 }}>ยังไม่มีประวัติการโยกย้ายเงิน</div>
+          <div style={{ fontSize: 13 }}>เริ่มบันทึกได้ที่หน้า "ขาย / ย้ายเงิน" — ผังนี้จะแสดงเส้นทางตามรายการที่บันทึกไว้จริง</div>
+        </div>
+      ) : (
+      <>
       {/* legend */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted,#9A917F)' }}>กรอบ = เจ้าของ</span>
@@ -152,6 +159,8 @@ export function FlowView() {
       <div style={{ fontSize: 12.5, color: 'var(--muted,#9A917F)', marginTop: 12 }}>
         แสดง {flow.treeCount} เส้นทางการโยกย้าย · {flow.nodeTotal} รายการในผัง — คลิกกล่องเพื่อดูเฉพาะเส้นทางของบัญชีนั้น · เลือกช่วงวันที่เพื่อกรองตามช่วงเวลา
       </div>
+      </>
+      )}
     </section>
   );
 }
