@@ -316,7 +316,7 @@ export function MoveView() {
           <div style={{ fontSize: 13, color: 'var(--muted,#9A917F)', marginBottom: 14, paddingLeft: 31 }}>เลือกได้มากกว่า 1 รายการเพื่อรวมยอด</div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <SourceGroup label="บัญชีใกล้ครบกำหนด" ink="var(--accent-ink,#5E7350)" bg="var(--accent-soft,#EEF2E8)" bd="var(--accent,#5E7350)" items={matCandMaturity} onToggle={toggleMatSel} onRemove={removeAnySource} getDate={getSourceDate} onDateChange={setSourceDate} />
+            <SourceGroup label="บัญชีใกล้ครบกำหนด" ink="#B91C1C" bg="#FEE2E2" bd="#FCA5A5" items={matCandMaturity} onToggle={toggleMatSel} onRemove={removeAnySource} getDate={getSourceDate} onDateChange={setSourceDate} />
             <SourceGroup label="รายการต้นทางเดิม (เพิ่มเอง)" ink="var(--p-blue-ink,#2456A8)" bg="var(--p-blue-bg,#EEF3FA)" bd="var(--p-blue-bd,#CFE0F0)" items={matCandManual} onToggle={toggleMatSel} onRemove={removeAnySource} getDate={getSourceDate} onDateChange={setSourceDate} />
             <SourceGroup label="รายได้ใหม่จากภายนอก" ink="var(--p-gold-ink,#8A6A12)" bg="var(--p-gold-bg,#FBF4DF)" bd="var(--p-gold-bd,#ECDBA8)" items={matCandIncome} onToggle={toggleMatSel} onRemove={removeAnySource} getDate={getSourceDate} onDateChange={setSourceDate} />
 
@@ -476,7 +476,7 @@ export function MoveView() {
             )}
           </div>
 
-          <div style={{ marginTop: 16, background: 'var(--inset,#F1EDE2)', borderRadius: 12, padding: '14px 16px' }}>
+          <div style={{ marginTop: 16, background: '#FDECC8', border: '1px solid #E8C468', borderRadius: 12, padding: '14px 16px' }}>
             <div style={{ fontSize: 11.5, color: 'var(--muted,#9A917F)', fontWeight: 600, marginBottom: 9 }}>ยอดคงเหลือแต่ละบัญชีต้นทาง</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {selSources.map((s) => {
@@ -492,7 +492,7 @@ export function MoveView() {
                 );
               })}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--border2,#E2D9C8)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 9, borderTop: '1px solid #E8C468' }}>
               <span style={{ fontSize: 13, color: 'var(--muted2,#6B6356)' }}>คงเหลือยังไม่จัดสรร (รวม)</span>
               <span style={{ fontWeight: 700, fontSize: 16, color: remain === 0 ? '#5E7350' : remain < 0 ? '#C0472E' : '#B26B4E' }}>{fmt(Math.abs(remain)) + (remain < 0 ? ' (เกิน)' : '')}</span>
             </div>
@@ -500,7 +500,7 @@ export function MoveView() {
           <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: allocValid ? '#5E7350' : '#B26B4E' }}>
             {allocValid ? '✓ จัดสรรครบถ้วน ที่มาของเงินตรงกับยอดปลายทาง' : 'ยังจัดสรรไม่ครบ — ปรับยอดให้ผลรวมต้นทาง = ยอดปลายทาง'}
           </div>
-          <button onClick={saveMove} disabled={!allocValid || saveState === 'saving'} style={{ marginTop: 12, width: '100%', background: saveState === 'saved' ? '#3C7A4A' : 'var(--accent,#5E7350)', color: 'var(--on-accent,#FBF8F1)', border: 'none', borderRadius: 11, padding: 13, fontFamily: "'IBM Plex Sans Thai'", fontSize: 15, fontWeight: 600, cursor: allocValid ? 'pointer' : 'not-allowed', opacity: allocValid ? 1 : 0.55 }}>
+          <button onClick={saveMove} disabled={!allocValid || saveState === 'saving'} style={{ marginTop: 12, width: '100%', background: saveState === 'saved' ? '#3C7A4A' : '#B45309', color: 'var(--on-accent,#FBF8F1)', border: 'none', borderRadius: 11, padding: 13, fontFamily: "'IBM Plex Sans Thai'", fontSize: 15, fontWeight: 600, cursor: allocValid ? 'pointer' : 'not-allowed', opacity: allocValid ? 1 : 0.55 }}>
             {saveState === 'saving' ? 'กำลังบันทึก…' : saveState === 'saved' ? '✓ บันทึกแล้ว' : saveState === 'error' ? 'บันทึกไม่สำเร็จ — ลองใหม่' : 'บันทึกการโยกย้าย'}
           </button>
         </div>
