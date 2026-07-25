@@ -298,14 +298,18 @@ function saveSettings_(partial) {
  *  LINE MESSAGING
  * ========================================================================= */
 
-/** Logs every LINE webhook event to a "LineDebug" sheet (auto-created) for
+/** Logs LINE webhook events to a "LineDebug" sheet (auto-created) for
  *  debugging, and routes group events:
  *  - "join" (bot invited to a group) → pending-approval flow (handleGroupJoin_)
  *  - "message" from a group → ignored unless it @mentions the bot (handleGroupMessage_)
- *  Anything else (1:1 chat, non-group source, etc.) is logged only, no action. */
+ *  Anything else (1:1 chat, non-group source, etc.) is logged only, no action.
+ *  Ordinary group chat that never mentions the bot isn't logged at all, so
+ *  the sheet doesn't fill up with unrelated family conversation. */
 function logLineWebhookIds_(events) {
   var s = ss_().getSheetByName('LineDebug') || ss_().insertSheet('LineDebug');
   events.forEach(function (ev) {
+    var isGroupMsg = ev.type === 'message' && ev.source && ev.source.type === 'group';
+    if (isGroupMsg && !isBotMentioned_(ev.message)) return;
     s.appendRow([new Date(), ev.type, JSON.stringify(ev.source)]);
     if (!ev.source || ev.source.type !== 'group' || !ev.source.groupId) return;
     if (ev.type === 'join') handleGroupJoin_(ev.source.groupId);
@@ -335,17 +339,25 @@ function handleGroupJoin_(groupId) {
  *  OR the account name appearing literally in the message text. */
 var BOT_NAME_ = 'NSL_ASSET';
 
-/** Ordinary chat in a group is ignored completely — the bot only reacts when
- *  tagged (see BOT_NAME_ above for how "tagged" is detected). If a mention
- *  arrives from a totally unknown group (e.g. the "join" event was missed),
- *  it's treated as a fresh join instead of answering. */
-function handleGroupMessage_(groupId, ev) {
-  var msg = ev.message;
-  if (!msg || msg.type !== 'text') return;
+/** True if a text message @mentions the bot (real LINE mention) or contains
+ *  its name as plain text (see BOT_NAME_ above). Shared by logLineWebhookIds_
+ *  (to decide what's even worth logging) and handleGroupMessage_ (to decide
+ *  what's worth acting on) so the two checks can't drift apart. */
+function isBotMentioned_(msg) {
+  if (!msg || msg.type !== 'text') return false;
   var realMention = !!(msg.mention && msg.mention.mentionees &&
     msg.mention.mentionees.some(function (m) { return m.isSelf; }));
-  var textMention = msg.text && msg.text.toLowerCase().indexOf(BOT_NAME_.toLowerCase()) !== -1;
-  if (!realMention && !textMention) return;
+  var textMention = !!(msg.text && msg.text.toLowerCase().indexOf(BOT_NAME_.toLowerCase()) !== -1);
+  return realMention || textMention;
+}
+
+/** Ordinary chat in a group is ignored completely — the bot only reacts when
+ *  tagged (see isBotMentioned_ above for how "tagged" is detected). If a
+ *  mention arrives from a totally unknown group (e.g. the "join" event was
+ *  missed), it's treated as a fresh join instead of answering. */
+function handleGroupMessage_(groupId, ev) {
+  var msg = ev.message;
+  if (!isBotMentioned_(msg)) return;
 
   var s = getSettings_();
   var active = s.lineGroups || [];
