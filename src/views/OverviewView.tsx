@@ -68,6 +68,13 @@ export function OverviewView() {
   const plGain = plValue - plCost;
   const plUp = plGain >= 0;
 
+  let goldCost = 0, goldValue = 0;
+  assets.forEach((a) => {
+    if (a.type === 'gold') { goldCost += (a.goldBaht ?? 0) * (a.goldBuyPrice ?? 0); goldValue += a.amount; }
+  });
+  const goldGain = goldValue - goldCost;
+  const goldUp = goldGain >= 0;
+
   const doPrint = () => { try { window.print(); } catch { /* noop */ } };
 
   const daysColor = (days: number) => (days <= 30 ? '#C0472E' : days <= 90 ? '#B26B4E' : '#5E7350');
@@ -124,6 +131,17 @@ export function OverviewView() {
             {totalGoldBaht} <span style={{ fontSize: 15, fontFamily: "'IBM Plex Sans Thai'", color: 'var(--muted,#8A8270)' }}>บาททอง</span>
           </div>
           <div style={statSub}>{fmt(totalGoldBaht * GOLD_PRICE_PER_BAHT)}</div>
+          {goldCost > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: goldUp ? '#1F8A4C' : '#C0392B' }}>
+                {(goldUp ? '+' : '') + fmt(goldGain)}{' '}
+                <span style={{ fontSize: 12, fontFamily: "'IBM Plex Sans Thai'" }}>
+                  {(goldUp ? '▲ +' : '▼ ') + Math.abs((goldGain / goldCost) * 100).toFixed(2) + '%'}
+                </span>
+              </div>
+              <div style={statSub}>ทุน {fmt(goldCost)} → ตลาด {fmt(goldValue)}</div>
+            </div>
+          )}
         </div>
         <div style={statCardStyle}>
           <div style={statLabel}>ใกล้ครบกำหนด (90 วัน)</div>

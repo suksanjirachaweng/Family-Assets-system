@@ -49,7 +49,7 @@ export function Header({ totalFmt }: { totalFmt: string }) {
             }}
           />
           <div>
-            <div style={{ fontWeight: 700, fontSize: 17, letterSpacing: '-0.01em' }}>สินทรัพย์ครอบครัว</div>
+            <div style={{ fontWeight: 700, fontSize: 17, letterSpacing: '-0.01em' }}>NSL ASSET</div>
             <div
               style={{
                 fontFamily: "'Lora',serif",
