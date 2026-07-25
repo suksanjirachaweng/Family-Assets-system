@@ -360,22 +360,58 @@ function handleGroupMessage_(groupId, ev) {
 /** Keyword-matched Q&A for @mention questions in an active group. Reuses the
  *  same amount/date logic as CRUD + daily notifications (computeAmount_,
  *  daysBetween_) so answers always match the web app and reminders. Falls
- *  back to a menu of supported questions if nothing matches — v1 supports
- *  3 question types; more can be added the same way later. */
+ *  back to a menu of supported questions if nothing matches. */
 function answerBotQuestion_(groupId, questionText) {
   var text = questionText || '';
   var reply;
   if (text.indexOf('ใกล้ครบ') !== -1) reply = answerNearMaturity_();
   else if (text.indexOf('เจ้าของ') !== -1) reply = answerByOwner_();
   else if (text.indexOf('มูลค่ารวม') !== -1 || text.indexOf('มูลค่าสุทธิ') !== -1 || text.indexOf('รวมสุทธิ') !== -1) reply = answerTotalNetWorth_();
-  else reply = QNA_MENU_;
+  else {
+    var owner = matchKnownOwner_(text);
+    reply = owner ? answerAssetsByOwner_(owner) : QNA_MENU_;
+  }
   pushToGroup_(groupId, reply);
 }
 
 var QNA_MENU_ = '❓ ไม่เข้าใจคำถามนี้ครับ ลองถามแบบนี้ดูนะครับ:\n' +
   '• ใกล้ครบกำหนด\n' +
   '• สรุปทรัพย์สินแยกตามเจ้าของ\n' +
-  '• มูลค่ารวมสุทธิทั้งหมด';
+  '• มูลค่ารวมสุทธิทั้งหมด\n' +
+  '• สรุปทรัพย์สิน[ชื่อเจ้าของ] เช่น "สรุปทรัพย์สินสุขสันต์"';
+
+/** Known family owner names — kept in sync with PEOPLE in
+ *  AssetFormFields.tsx / OWNER_BASE in colors.ts (frontend and backend are
+ *  separate runtimes, so this list can't be shared directly). Order doesn't
+ *  matter — none of these names are substrings of each other. */
+var OWNER_NAMES_ = ['ชัย', 'วิวัฒน์', 'ธีรดา', 'กวิน', 'สุขสันต์', 'สุวิชช์', 'วิภาดา', 'สุภาดา', 'ครอบครัว'];
+
+/** Finds the first known family owner name that appears anywhere in the
+ *  text (no space required — Thai words often run together, e.g.
+ *  "ทรัพย์สินสุขสันต์"). Returns null if none match. */
+function matchKnownOwner_(text) {
+  for (var i = 0; i < OWNER_NAMES_.length; i++) {
+    if (text.indexOf(OWNER_NAMES_[i]) !== -1) return OWNER_NAMES_[i];
+  }
+  return null;
+}
+
+/** Lists every asset a specific owner appears on (solo or jointly-owned),
+ *  with a running total — matches ownerColor()/ownerKey() semantics in the
+ *  web app (joint assets aren't split, the full amount counts once). */
+function answerAssetsByOwner_(ownerName) {
+  var s = getSettings_();
+  var items = listAssets_().filter(function (a) { return a.owners.indexOf(ownerName) !== -1; });
+  if (!items.length) return '❌ ไม่พบทรัพย์สินของ ' + ownerName + ' ในระบบครับ';
+  var total = 0;
+  var lines = items.map(function (a) {
+    var amount = computeAmount_(a, s.goldPricePerBaht);
+    total += amount;
+    var label = a.name ? (a.name + ' · ') : '';
+    return '• ' + (TYPE_LABEL[a.type] || a.type) + ' · ' + label + a.owners.join(' · ') + ' · ' + baht_(amount);
+  });
+  return '📋 ทรัพย์สินของ ' + ownerName + ' — ' + items.length + ' รายการ รวม ' + baht_(total) + '\n' + lines.join('\n');
+}
 
 /** Assets due within the next 90 days (0..90 inclusive) — same window as the
  *  "ใกล้ครบกำหนด (90 วัน)" card in OverviewView.tsx. */
