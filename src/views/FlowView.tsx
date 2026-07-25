@@ -4,7 +4,7 @@ import { computeFlow } from '@/lib/flowLayout';
 import { BankBadge } from '@/components/common/BankBadge';
 
 export function FlowView() {
-  const expenseExpanded = useAppStore((s) => s.expenseExpanded);
+  const moves = useAppStore((s) => s.moves);
   const flowSel = useAppStore((s) => s.flowSel);
   const flowRange = useAppStore((s) => s.flowRange);
   const flowFrom = useAppStore((s) => s.flowFrom);
@@ -15,8 +15,8 @@ export function FlowView() {
   const patch = useAppStore((s) => s.patch);
 
   const flow = useMemo(
-    () => computeFlow({ expenseExpanded, flowSel, flowRange, flowFrom, flowTo, xAxisMode: flowXAxis }),
-    [expenseExpanded, flowSel, flowRange, flowFrom, flowTo, flowXAxis],
+    () => computeFlow({ moves, flowSel, flowRange, flowFrom, flowTo, xAxisMode: flowXAxis }),
+    [moves, flowSel, flowRange, flowFrom, flowTo, flowXAxis],
   );
 
   const hasDateFilter = !!(flowFrom || flowTo);
@@ -77,12 +77,6 @@ export function FlowView() {
           <button onClick={() => set('flowZoom', Math.min(1.6, Math.round((flowZoom + 0.15) * 100) / 100))} style={zoomBtn}>+</button>
         </div>
         <button onClick={() => patch({ flowZoom: 1, flowSel: null })} style={{ background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontFamily: "'IBM Plex Sans Thai'", fontSize: 13, color: 'var(--muted2,#6B6356)', fontWeight: 500 }}>รีเซ็ต</button>
-        <button
-          onClick={() => patch({ expenseExpanded: !expenseExpanded, flowSel: null })}
-          style={{ background: expenseExpanded ? '#B26B4E' : 'var(--surface,#FBF8F1)', color: expenseExpanded ? '#FBF8F1' : '#6B6356', border: '1px solid ' + (expenseExpanded ? '#B26B4E' : '#E2D9C8'), borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13, fontWeight: 600 }}
-        >
-          {expenseExpanded ? 'ค่าใช้จ่าย: แยกรายการ' : 'ค่าใช้จ่าย: รวมกลุ่ม'}
-        </button>
         <div style={{ width: 1, height: 26, background: '#E2D9C8' }} />
         <div style={{ display: 'flex', background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 10, padding: 3 }}>
           {(['stage', 'date'] as const).map((m) => {
@@ -142,7 +136,7 @@ export function FlowView() {
             {flow.nodes.map((n) => (
               <div
                 key={n.id}
-                onClick={() => (n.isExpenseToggle ? patch({ expenseExpanded: !expenseExpanded, flowSel: null }) : set('flowSel', n.isSel ? null : n.id))}
+                onClick={() => set('flowSel', n.isSel ? null : n.id)}
                 style={n.boxStyle}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>

@@ -42,7 +42,6 @@ export interface AppState {
   alloc: AllocMap | null;
   flowRange: FlowRange;
   flowXAxis: FlowXAxis;
-  expenseExpanded: boolean;
   search: string;
   histRange: HistRange;
   lineConnected: boolean;
@@ -99,7 +98,6 @@ export const useAppStore = create<AppState>((setState) => ({
   alloc: null,
   flowRange: '1Y',
   flowXAxis: 'stage',
-  expenseExpanded: false,
   search: '',
   histRange: '1Y',
   lineConnected: true,

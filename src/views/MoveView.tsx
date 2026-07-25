@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAppStore, type AllocMap } from '@/store/useAppStore';
-import { TYPES, type Asset, type AssetType, type RawAsset } from '@/data/types';
+import type { Asset, AssetType, RawAsset, MoveLeg, FlowNodeType } from '@/data/types';
 import { netInterest, assetsWithDue, decorateAssets } from '@/lib/assets';
 import { fmt, dueLabelTH, todayISO } from '@/lib/format';
 import { ScreenTitle } from '@/components/common/ScreenTitle';
@@ -11,11 +11,6 @@ import * as api from '@/api/client';
 
 interface DestDef { id: string; typeLabel: string; color: string; name: string; target: number; detail: string; isExtra?: boolean }
 interface MatCandEntry { id: string; name: string; subLabel: string; breakLabel: string; totalFmt: string; totalVal: number; sel: boolean; isExtra?: boolean }
-
-const DEST_DEFS: DestDef[] = [
-  { id: 'd1', typeLabel: 'หุ้นกู้', color: TYPES.bond.color, name: 'หุ้นกู้ CPALL · วิวัฒน์', target: 1000000, detail: 'ผูกบัญชีรับดอกเบี้ย ธ.กรุงเทพ 122-4423-121334' },
-  { id: 'd2', typeLabel: 'ฝากประจำ', color: TYPES.fd.color, name: 'ฝากประจำ ธ.กสิกร · ธีรดา', target: 1250000, detail: 'ผูกบัญชีรับดอกเบี้ย ธ.กสิกร 777-26443-28881' },
-];
 
 /** Builds the selectable-source-card fields for any existing asset, regardless of whether it has a due date. */
 function buildMatCandEntry(a: Asset, isExtra: boolean) {
@@ -62,12 +57,6 @@ function describeNewDestination(a: Asset): string {
   return `${owners} · ${a.otherCat || 'อื่นๆ'}`;
 }
 
-const HISTORY = [
-  { title: 'รวม 2 ฝากประจำครบกำหนด → ลงทุนใหม่', date: '5 ม.ค. 2570', detail: 'ฝากประจำ ธ.ออมสิน (1,050,000) + ฝากประจำ ธ.ออมสิน (1,200,000) รวม ฿2,250,000 → หุ้นกู้ CPALL ฿1,000,000 (วิวัฒน์) + ฝากประจำ ธ.กสิกร ฿1,250,000 (ธีรดา)' },
-  { title: 'หุ้นกู้ GULF ครบกำหนด → แตก 3 รายการ', date: '20 ก.ค. 2569', detail: 'เงินต้น 3,000,000 + ดอกเบี้ย 100,000 รวม ฿3,100,000 → ฝากประจำ ฿1,000,000 + ฝากประจำ ฿1,100,000 + นำไปซื้อเครื่องจักร ฿1,000,000' },
-  { title: 'รายรับจากสินค้า 1 → กระจายลงทุน', date: '15 มี.ค. 2569', detail: 'รับเงิน ฿4,000,000 → หุ้นกู้ GULF ฿3,000,000 (วิวัฒน์) + ฝากประจำ ธ.ออมสิน ฿1,000,000 (ชัย·ธีรดา)' },
-];
-
 export function MoveView() {
   const matSel = useAppStore((s) => s.matSel);
   const moveTarget = useAppStore((s) => s.moveTarget);
@@ -75,6 +64,7 @@ export function MoveView() {
   const toggleMatSel = useAppStore((s) => s.toggleMatSel);
   const set = useAppStore((s) => s.set);
   const loadData = useAppStore((s) => s.loadData);
+  const moves = useAppStore((s) => s.moves);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [extraIncomes, setExtraIncomes] = useState<{ id: string; name: string; amount: number }[]>([]);
@@ -193,6 +183,7 @@ export function MoveView() {
   };
 
   const withDue = useMemo(() => assetsWithDue(assets), [assets]);
+  const sortedMoves = useMemo(() => [...moves].sort((a, b) => (a.date < b.date ? 1 : -1)), [moves]);
 
   let autoCandSources: Asset[] = withDue.filter((x) => x.days <= 200).slice(0, 4).map((x) => x.a);
   if (moveTarget) {
@@ -220,7 +211,6 @@ export function MoveView() {
 
   const destDefs: DestDef[] = useMemo(
     () => [
-      ...DEST_DEFS,
       ...extraExpenses,
       ...newDestinations.map((nd) => ({
         id: nd.id, typeLabel: nd.asset.typeLabel, color: nd.asset.color, name: nd.asset.name,
@@ -257,16 +247,44 @@ export function MoveView() {
 
   const iStyle: React.CSSProperties = { width: 108, padding: '6px 9px', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 8, fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13, color: 'var(--text,#2C2A23)', textAlign: 'right', background: 'var(--surface2,#fff)' };
 
+  /** Builds the structured source/destination legs the money-flow diagram needs,
+   *  from the same state already tracked for the allocation UI — nothing new to
+   *  ask the user for, just persisting what's already on screen. */
+  const buildMoveLegs = () => {
+    const sources: MoveLeg[] = selSources.map((s) => {
+      const income = extraIncomes.find((e) => e.id === s.id);
+      if (income) return { id: s.id, type: 'src' as FlowNodeType, label: income.name, amount: s.total, date: getSourceDate(s.id) };
+      const a = assets.find((x) => x.id === s.id);
+      const label = a ? `${a.name} · ${a.owners.join(' · ')}` : s.name;
+      return { id: s.id, type: (a?.type ?? 'other') as FlowNodeType, label, amount: s.total, date: getSourceDate(s.id) };
+    });
+    const destinations: MoveLeg[] = [
+      ...extraExpenses.map((e) => ({ id: e.id, type: 'exit' as FlowNodeType, label: e.name, amount: e.target, date: getDestDate(e.id) })),
+      ...newDestinations.map((nd) => ({ id: nd.id, type: nd.asset.type as FlowNodeType, label: `${nd.asset.name} · ${nd.asset.owners.join(' · ')}`, amount: nd.target, date: getDestDate(nd.id) })),
+      ...topUps.map((t) => ({ id: t.existingId, type: t.asset.type as FlowNodeType, label: `${t.asset.name} · ${t.asset.owners.join(' · ')}`, amount: t.addAmount, date: getDestDate(t.existingId) })),
+    ];
+    const alloc: Record<string, number> = {};
+    destDefs.forEach((d) => {
+      selSources.forEach((s) => {
+        const v = effAlloc(d.id, s.id);
+        if (v > 0) alloc[`${d.id}|${s.id}`] = v;
+      });
+    });
+    return { sources, destinations, alloc };
+  };
+
   const saveMove = async () => {
     const srcNames = selSources.map((s) => `${s.name} (ถอน ${dueLabelTH(getSourceDate(s.id))})`).join(' + ');
     const dstNames = destDefs.map((d) => `${d.name} ${fmt(d.target)} (ฝาก ${dueLabelTH(getDestDate(d.id))})`).join(' + ');
     const title = `โยกย้าย ${selSources.length} บัญชี → ${destDefs.length} ปลายทาง`;
     const detail = `รวม ${fmt(matTotal)} จาก ${srcNames} → ${dstNames}`;
+    const { sources, destinations, alloc: allocOut } = buildMoveLegs();
     if (!api.isConfigured()) {
       newDestinations.forEach((nd) => upsertLocalAsset(nd.raw));
       topUps.forEach((t) => upsertLocalAsset({ ...t.asset, amount: (t.asset.amount ?? 0) + t.addAmount }));
       setNewDestinations([]);
       setTopUps([]);
+      set('alloc', {});
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 2000);
       return;
@@ -275,10 +293,11 @@ export function MoveView() {
     try {
       for (const nd of newDestinations) await api.createAsset(nd.raw);
       for (const t of topUps) await api.updateAsset({ ...t.asset, amount: (t.asset.amount ?? 0) + t.addAmount });
-      await api.recordMove({ title, detail, amount: matTotal });
+      await api.recordMove({ title, detail, amount: matTotal, sources, destinations, alloc: allocOut });
       await loadData();
       setNewDestinations([]);
       setTopUps([]);
+      set('alloc', {});
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 2000);
     } catch {
@@ -512,23 +531,27 @@ export function MoveView() {
       {/* history */}
       <div style={{ marginTop: 26 }}>
         <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 14 }}>ประวัติการโยกย้าย</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          {HISTORY.map((h, i) => (
-            <div key={i} style={{ display: 'flex', gap: 16 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--accent,#5E7350)', border: '3px solid #DCEAD2', marginTop: 4 }} />
-                <span style={{ width: 2, flex: 1, background: '#E2D9C8' }} />
-              </div>
-              <div style={{ background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border,#E8E0CF)', borderRadius: 14, padding: '16px 18px', marginBottom: 14, flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
-                  <span style={{ fontWeight: 600 }}>{h.title}</span>
-                  <span style={{ fontSize: 12, color: 'var(--muted,#9A917F)' }}>{h.date}</span>
+        {sortedMoves.length === 0 ? (
+          <div style={{ fontSize: 13.5, color: 'var(--muted,#9A917F)' }}>ยังไม่มีประวัติการโยกย้ายเงิน — บันทึกรายการแรกได้จากฟอร์มด้านบน</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {sortedMoves.map((h, i) => (
+              <div key={h.id ?? i} style={{ display: 'flex', gap: 16 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--accent,#5E7350)', border: '3px solid #DCEAD2', marginTop: 4 }} />
+                  <span style={{ width: 2, flex: 1, background: '#E2D9C8' }} />
                 </div>
-                <div style={{ fontSize: 13.5, color: 'var(--text,#5B5444)', marginTop: 6, lineHeight: 1.55 }}>{h.detail}</div>
+                <div style={{ background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border,#E8E0CF)', borderRadius: 14, padding: '16px 18px', marginBottom: 14, flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
+                    <span style={{ fontWeight: 600 }}>{h.title}</span>
+                    <span style={{ fontSize: 12, color: 'var(--muted,#9A917F)' }}>{dueLabelTH(h.date)}</span>
+                  </div>
+                  <div style={{ fontSize: 13.5, color: 'var(--text,#5B5444)', marginTop: 6, lineHeight: 1.55 }}>{h.detail}</div>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

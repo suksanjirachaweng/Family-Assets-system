@@ -4,6 +4,7 @@ import { TYPES, type FlowNodeType } from '@/data/types';
 import { dueLabelTH, fmt, thMon } from './format';
 import { ownerColor, mixHex } from './colors';
 import type { FlowRange, FlowXAxis } from '@/store/useAppStore';
+import type { MoveRecord } from '@/api/client';
 
 const NW = 196, NH = 58, COLW = 252, PADX = 20, PADY = 16, ROWH = 80, MINGAP = 72;
 const MIN_PX_PER_DAY = 1.1, MAX_PX_PER_DAY = 4;
@@ -28,7 +29,7 @@ const ownerOf = (lbl: string) => {
 };
 
 export interface FlowParams {
-  expenseExpanded: boolean;
+  moves: MoveRecord[];
   flowSel: string | null;
   flowRange: FlowRange;
   flowFrom: string;
@@ -38,7 +39,6 @@ export interface FlowParams {
 
 export interface FlowNodeVM {
   id: string;
-  isExpenseToggle: boolean;
   isSel: boolean;
   amount: string;
   sub: string;
@@ -79,7 +79,7 @@ const EMPTY_FLOW: FlowResult = {
 };
 
 export function computeFlow(p: FlowParams): FlowResult {
-  const G = buildFlowGraph(p.expenseExpanded);
+  const G = buildFlowGraph(p.moves);
   if (!G.nodes.length) return EMPTY_FLOW;
   const gmap: Record<string, (typeof G.nodes)[number]> = {};
   G.nodes.forEach((n) => { gmap[n.id] = n; });
@@ -188,7 +188,6 @@ export function computeFlow(p: FlowParams): FlowResult {
     const dashed = n.type === 'exit' || n.type === 'merge' || n.type === 'expense';
     const hasOwner = !!owner && !isSrc && !dashed;
     const c = hasOwner ? ownerColor(owner) : (n.type === 'expense' ? '#B26B4E' : '#9AA0A6');
-    const isExpenseToggle = n.id === 't8g' || /^t8e/.test(n.id);
     const isSel = sel === n.id;
     const borderC = mixHex(c, '#000000', 0.1);
     const bgC = mixHex(c, '#FFFFFF', 0.72);
@@ -196,7 +195,6 @@ export function computeFlow(p: FlowParams): FlowResult {
     const isAsset = !!(TYPES as Record<string, unknown>)[n.type];
     return {
       id: n.id,
-      isExpenseToggle,
       isSel,
       amount: fmt(n.amount),
       sub: n.sub,

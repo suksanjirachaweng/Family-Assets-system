@@ -22,7 +22,7 @@ var ASSET_HEADERS = [
   'goldBuyPrice' // added later — must stay last; see migrateAddGoldBuyPrice()
 ];
 var EXPENSE_HEADERS = ['assetId', 'label', 'cat', 'amount', 'date'];
-var MOVE_HEADERS = ['id', 'date', 'title', 'detail'];
+var MOVE_HEADERS = ['id', 'date', 'title', 'detail', 'data'];
 var SETTING_HEADERS = ['key', 'value'];
 
 var DEFAULT_SETTINGS = {
@@ -48,7 +48,7 @@ function doGet(e) {
     var resource = (e && e.parameter && e.parameter.resource) || 'all';
     var out = {};
     if (resource === 'all' || resource === 'assets') out.assets = listAssets_();
-    if (resource === 'all' || resource === 'moves') out.moves = listObjects_(SHEETS.MOVES);
+    if (resource === 'all' || resource === 'moves') out.moves = listMoves_();
     if (resource === 'all' || resource === 'settings') out.settings = getSettings_();
     return jsonOut_({ ok: true, data: out });
   } catch (err) {
@@ -69,6 +69,7 @@ function doPost(e) {
       case 'updateAsset': result = updateAsset_(payload); break;
       case 'deleteAsset': result = deleteAsset_(payload.id); break;
       case 'recordMove': result = recordMove_(payload); break;
+      case 'deleteMove': result = deleteMove_(payload.id); break;
       case 'saveSettings': result = saveSettings_(payload); break;
       case 'ejectLineGroup': result = ejectLineGroup_(payload.groupId); break;
       case 'acceptLineGroup': result = acceptLineGroup_(payload.groupId); break;
@@ -205,6 +206,12 @@ function deleteAsset_(id) {
   return { id: id };
 }
 
+function deleteMove_(id) {
+  var row = findRow_(SHEETS.MOVES, id);
+  if (row > 0) sheet_(SHEETS.MOVES).deleteRow(row);
+  return { id: id };
+}
+
 function writeExpenses_(assetId, expenses) {
   var s = sheet_(SHEETS.EXPENSES);
   var values = s.getDataRange().getValues();
@@ -212,15 +219,37 @@ function writeExpenses_(assetId, expenses) {
   expenses.forEach(function (e) { s.appendRow([assetId, e.label, e.cat, e.amount, e.date]); });
 }
 
-/** payload: { title, detail, amount } — append to Moves and optionally notify a large move. */
+/** payload: { title, detail, amount, sources, destinations, alloc } — append to Moves
+ *  (sources/destinations/alloc are stored as JSON in the "data" column so the money-flow
+ *  diagram can rebuild a real graph from move history) and optionally notify a large move. */
 function recordMove_(p) {
   var id = 'm' + Date.now();
-  sheet_(SHEETS.MOVES).appendRow([id, formatDate_(new Date()), p.title || 'การโยกย้ายเงิน', p.detail || '']);
+  var data = { sources: p.sources || [], destinations: p.destinations || [], alloc: p.alloc || {} };
+  sheet_(SHEETS.MOVES).appendRow([id, formatDate_(new Date()), p.title || 'การโยกย้ายเงิน', p.detail || '', JSON.stringify(data)]);
   var s = getSettings_();
   if (s.lineLargeMove && Number(p.amount || 0) >= 1000000) {
     sendLinePush_('💸 การโยกย้ายเงินก้อนใหญ่\n' + (p.title || '') + '\n' + (p.detail || '') + '\nยอด ' + baht_(p.amount));
   }
   return { id: id };
+}
+
+/** Reads the Moves sheet and parses the JSON "data" column back into structured
+ *  sources/destinations/alloc — legacy rows recorded before this column existed
+ *  just come back with empty arrays. */
+function listMoves_() {
+  return listObjects_(SHEETS.MOVES).map(function (o) {
+    var data = {};
+    try { data = JSON.parse(o.data || '{}'); } catch (e) { /* legacy row, no data column */ }
+    return {
+      id: String(o.id),
+      date: formatDate_(o.date),
+      title: o.title,
+      detail: o.detail,
+      sources: data.sources || [],
+      destinations: data.destinations || [],
+      alloc: data.alloc || {},
+    };
+  });
 }
 
 /* =========================================================================
@@ -516,6 +545,18 @@ function migrateAddGoldBuyPrice() {
   var col = s.getLastColumn() + 1;
   s.getRange(1, col).setValue('goldBuyPrice').setFontWeight('bold');
   Logger.log('เพิ่มคอลัมน์ goldBuyPrice แล้ว ที่คอลัมน์ ' + col);
+}
+
+/** One-time migration for a Sheet that's already live: adds the "data" column to
+ *  Moves (holds JSON sources/destinations/alloc for the money-flow diagram)
+ *  without touching existing rows. Run once from the Apps Script editor. */
+function migrateAddMoveData() {
+  var s = sheet_(SHEETS.MOVES);
+  var headers = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0];
+  if (headers.indexOf('data') !== -1) { Logger.log('มีคอลัมน์ data อยู่แล้ว'); return; }
+  var col = s.getLastColumn() + 1;
+  s.getRange(1, col).setValue('data').setFontWeight('bold');
+  Logger.log('เพิ่มคอลัมน์ data แล้ว ที่คอลัมน์ ' + col);
 }
 
 /** One-time cleanup: deletes every row of sample/seed data from Assets,

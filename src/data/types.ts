@@ -91,6 +91,16 @@ export interface FlowGraph {
   edges: [string, string][];
 }
 
+/** One source or destination leg of a recorded money move — enough to rebuild
+ *  a FlowNode from real move history (see buildFlowGraph in data/flowGraph.ts). */
+export interface MoveLeg {
+  id: string;
+  type: FlowNodeType;
+  label: string;
+  amount: number;
+  date: string;
+}
+
 export const TYPES: Record<AssetType, TypeMeta> = {
   fd: { label: 'ฝากประจำ', en: 'Fixed Deposit', color: '#2E9E5B' },
   sav: { label: 'ออมทรัพย์', en: 'Savings', color: '#17B0A6' },

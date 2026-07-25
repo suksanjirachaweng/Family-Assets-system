@@ -1,4 +1,4 @@
-import type { RawAsset } from '@/data/types';
+import type { RawAsset, MoveLeg } from '@/data/types';
 
 /**
  * API client for the Google Apps Script backend.
@@ -9,7 +9,15 @@ const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) || 
 
 export const isConfigured = () => !!API_URL;
 
-export interface MoveRecord { id?: string; date: string; title: string; detail: string }
+export interface MoveRecord {
+  id?: string;
+  date: string;
+  title: string;
+  detail: string;
+  sources?: MoveLeg[];
+  destinations?: MoveLeg[];
+  alloc?: Record<string, number>;
+}
 
 export interface LineGroup { id: string; name: string }
 
@@ -64,7 +72,9 @@ async function post<T>(action: string, payload: unknown): Promise<T> {
 export const createAsset = (a: RawAsset) => post<{ id: string }>('createAsset', a);
 export const updateAsset = (a: RawAsset) => post<{ id: string }>('updateAsset', a);
 export const deleteAsset = (id: string) => post<{ id: string }>('deleteAsset', { id });
-export const recordMove = (m: { title: string; detail: string; amount: number }) => post<{ id: string }>('recordMove', m);
+export const recordMove = (m: { title: string; detail: string; amount: number; sources?: MoveLeg[]; destinations?: MoveLeg[]; alloc?: Record<string, number> }) =>
+  post<{ id: string }>('recordMove', m);
+export const deleteMove = (id: string) => post<{ id: string }>('deleteMove', { id });
 export const saveSettings = (s: RemoteSettings) => post<RemoteSettings>('saveSettings', s);
 /** Removes the group from both the active and pending lists AND has the bot leave
  *  that LINE group, so it can't get silently re-added by a future message there. */
