@@ -37,23 +37,17 @@ export function Header({ totalFmt }: { totalFmt: string }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div
+          <img
+            src="/nsl-logo.jpg"
+            alt="NSL"
             style={{
               width: 38,
               height: 38,
               borderRadius: 11,
-              background: 'var(--accent,#5E7350)',
-              color: 'var(--on-accent,#FBF8F1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: 18,
+              objectFit: 'cover',
               flexShrink: 0,
             }}
-          >
-            บ
-          </div>
+          />
           <div>
             <div style={{ fontWeight: 700, fontSize: 17, letterSpacing: '-0.01em' }}>สินทรัพย์ครอบครัว</div>
             <div
