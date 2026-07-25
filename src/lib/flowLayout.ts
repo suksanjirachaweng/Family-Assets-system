@@ -6,8 +6,9 @@ import { ownerColor, mixHex } from './colors';
 import type { FlowRange, FlowXAxis } from '@/store/useAppStore';
 import type { MoveRecord } from '@/api/client';
 
-const NW = 196, NH = 58, COLW = 252, PADX = 20, PADY = 16, ROWH = 80, MINGAP = 72;
-const MIN_PX_PER_DAY = 1.1, MAX_PX_PER_DAY = 4;
+const NW = 172, NH = 52, NH_COMPACT = 42, COLW = 220, PADX = 20, PADY = 16, ROWH = 64, NODE_GAP = 14;
+type FlowDateStep = 'month' | '2week' | 'week';
+const PX_PER_DAY_BY_STEP: Record<FlowDateStep, number> = { month: 4, '2week': 8.5, week: 17 };
 
 const daysBetween = (a: string, b: string) => Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
 
@@ -28,6 +29,8 @@ const ownerOf = (lbl: string) => {
   return p.length > 1 ? p[p.length - 1].trim() : '';
 };
 
+export type { FlowDateStep };
+
 export interface FlowParams {
   moves: MoveRecord[];
   assets: Asset[];
@@ -36,6 +39,7 @@ export interface FlowParams {
   flowFrom: string;
   flowTo: string;
   xAxisMode: FlowXAxis;
+  dateStep: FlowDateStep;
 }
 
 export interface FlowNodeVM {
@@ -102,7 +106,7 @@ export function computeFlow(p: FlowParams): FlowResult {
   const allDatesRaw = G.nodes.map((n) => n.date).filter(Boolean).sort();
   const minDate = allDatesRaw[0], maxDate = allDatesRaw[allDatesRaw.length - 1];
   const totalDays = Math.max(1, daysBetween(minDate, maxDate));
-  const pxPerDay = Math.min(MAX_PX_PER_DAY, Math.max(MIN_PX_PER_DAY, ((maxGen + 1) * COLW) / totalDays));
+  const pxPerDay = PX_PER_DAY_BY_STEP[p.dateStep] ?? PX_PER_DAY_BY_STEP.month;
 
   let cursor = 0;
   const yPos: Record<string, number> = {};
@@ -120,18 +124,6 @@ export function computeFlow(p: FlowParams): FlowResult {
   roots.forEach((r) => dfsY(r.id));
   G.nodes.forEach((n) => { if (yPos[n.id] == null) { yPos[n.id] = cursor * ROWH; cursor++; } });
 
-  // per-column collision avoidance
-  const byCol: Record<number, string[]> = {};
-  G.nodes.forEach((n) => { const g = genMemo[n.id]; (byCol[g] = byCol[g] || []).push(n.id); });
-  Object.keys(byCol).forEach((g) => {
-    const ids = byCol[+g].sort((a, b) => yPos[a] - yPos[b]);
-    for (let i = 1; i < ids.length; i++) {
-      if (yPos[ids[i]] < yPos[ids[i - 1]] + MINGAP) yPos[ids[i]] = yPos[ids[i - 1]] + MINGAP;
-    }
-  });
-  let maxY = 0;
-  G.nodes.forEach((n) => { if (yPos[n.id] > maxY) maxY = yPos[n.id]; });
-
   const xOf = (n: { id: string; date: string }) =>
     p.xAxisMode === 'date'
       ? PADX + Math.max(0, daysBetween(minDate, n.date)) * pxPerDay
@@ -139,16 +131,40 @@ export function computeFlow(p: FlowParams): FlowResult {
 
   const nodes = G.nodes.map((n) => ({
     id: n.id, x: xOf(n), y: yPos[n.id] + PADY, w: NW,
-    h: (n.type === 'exit' || n.type === 'merge') ? 50 : NH,
+    h: (n.type === 'exit' || n.type === 'merge') ? NH_COMPACT : NH,
     type: n.type, amount: n.amount, sub: n.label, date: n.date,
   }));
+
+  // General 2D collision avoidance: process left-to-right, top-to-bottom and
+  // push any node down past whatever it would otherwise overlap. Works the
+  // same regardless of x-axis mode (stage columns or real dates), unlike the
+  // old per-generation-column-only spacing which never accounted for two
+  // different branches landing at the same pixel in date mode.
+  const ordered = [...nodes].sort((a, b) => a.x - b.x || a.y - b.y);
+  const placed: typeof nodes = [];
+  ordered.forEach((n) => {
+    let shifted = true;
+    while (shifted) {
+      shifted = false;
+      for (const other of placed) {
+        const xOverlap = n.x < other.x + other.w + NODE_GAP && n.x + n.w + NODE_GAP > other.x;
+        const yOverlap = n.y < other.y + other.h + NODE_GAP && n.y + n.h + NODE_GAP > other.y;
+        if (xOverlap && yOverlap) { n.y = other.y + other.h + NODE_GAP; shifted = true; }
+      }
+    }
+    placed.push(n);
+  });
+
+  let maxY = 0;
+  nodes.forEach((n) => { if (n.y + n.h > maxY) maxY = n.y + n.h; });
+
   const nodeMap: Record<string, (typeof nodes)[number]> = {};
   nodes.forEach((n) => { nodeMap[n.id] = n; });
   const links = G.edges.filter(([a, b]) => nodeMap[a] && nodeMap[b]);
   const flowW = p.xAxisMode === 'date'
     ? PADX + totalDays * pxPerDay + NW + PADX
     : (maxGen + 1) * COLW + PADX;
-  const flowH = maxY + NH + PADY + 24;
+  const flowH = maxY + PADY + 24;
 
   // selection: ancestors + descendants
   const fwd: Record<string, string[]> = {}, rev: Record<string, string[]> = {};
@@ -190,8 +206,8 @@ export function computeFlow(p: FlowParams): FlowResult {
     const hasOwner = !!owner && !isSrc && !dashed;
     const c = hasOwner ? ownerColor(owner) : (n.type === 'expense' ? '#B26B4E' : '#9AA0A6');
     const isSel = sel === n.id;
-    const borderC = mixHex(c, '#000000', 0.1);
-    const bgC = mixHex(c, '#FFFFFF', 0.72);
+    const borderC = mixHex(c, '#000000', 0.18);
+    const bgC = mixHex(c, '#FFFFFF', 0.55);
     const typeC = colorOf(n.type);
     const isAsset = !!(TYPES as Record<string, unknown>)[n.type];
     return {
@@ -201,13 +217,13 @@ export function computeFlow(p: FlowParams): FlowResult {
       sub: n.sub,
       tag: ASSET_TAG[n.type],
       dateLabel: dueLabelTH(n.date),
-      amountStyle: { fontFamily: "'Lora',serif", fontWeight: 600, fontSize: 13.5, color: mixHex(c, '#000000', 0.25), margin: 0 },
-      subStyle: { fontSize: 10, color: mixHex(c, '#000000', 0.45), lineHeight: 1.25 },
+      amountStyle: { fontFamily: "'Lora',serif", fontWeight: 700, fontSize: 12.5, color: mixHex(c, '#000000', 0.35), margin: 0 },
+      subStyle: { fontSize: 9.5, color: mixHex(c, '#000000', 0.5), lineHeight: 1.2 },
       boxStyle: {
-        position: 'absolute', left: n.x, top: n.y, width: n.w,
+        position: 'absolute', left: n.x, top: n.y, width: n.w, height: n.h, overflow: 'hidden',
         background: bgC, color: borderC,
         border: (dashed ? '1.5px dashed ' : '1.5px solid ') + borderC,
-        borderRadius: 9, padding: '6px 10px',
+        borderRadius: 8, padding: '5px 8px', boxSizing: 'border-box',
         boxShadow: isSrc
           ? ('0 0 0 3px ' + bgC + ', 0 0 0 4.5px ' + borderC + (isSel ? ', 0 4px 14px rgba(60,50,30,0.22)' : ''))
           : (isSel ? '0 4px 14px rgba(60,50,30,0.22)' : '0 1px 3px rgba(60,50,30,0.07)'),
@@ -216,8 +232,8 @@ export function computeFlow(p: FlowParams): FlowResult {
         cursor: 'pointer',
       },
       tagStyle: isAsset
-        ? { display: 'inline-block', flexShrink: 0, whiteSpace: 'nowrap', fontSize: 9.5, fontWeight: 700, color: mixHex(typeC, '#000000', 0.25), background: mixHex(typeC, '#FFFFFF', 0.78), border: '1px solid ' + mixHex(typeC, '#000000', 0.08), padding: '1px 7px', borderRadius: 5, letterSpacing: '0.01em' }
-        : { flexShrink: 0, whiteSpace: 'nowrap', fontSize: 10, fontWeight: 700, color: mixHex(c, '#000000', 0.35), letterSpacing: '0.02em' },
+        ? { display: 'inline-block', flexShrink: 0, whiteSpace: 'nowrap', fontSize: 9, fontWeight: 700, color: mixHex(typeC, '#000000', 0.3), background: mixHex(typeC, '#FFFFFF', 0.62), border: '1px solid ' + mixHex(typeC, '#000000', 0.15), padding: '1px 6px', borderRadius: 5, letterSpacing: '0.01em' }
+        : { flexShrink: 0, whiteSpace: 'nowrap', fontSize: 9.5, fontWeight: 700, color: mixHex(c, '#000000', 0.4), letterSpacing: '0.02em' },
     };
   });
 
@@ -249,17 +265,33 @@ export function computeFlow(p: FlowParams): FlowResult {
     gridLines = [];
     const start = new Date(minDate);
     const end = new Date(maxDate);
-    const stepMonths = totalDays > 900 ? 6 : totalDays > 450 ? 3 : totalDays > 200 ? 2 : 1;
-    const cur = new Date(start.getFullYear(), start.getMonth(), 1);
-    let guard = 0;
-    while (cur.getTime() <= end.getTime() && guard < 60) {
-      guard++;
-      const dayOffset = Math.round((cur.getTime() - start.getTime()) / 86400000);
-      const x = PADX + Math.max(0, dayOffset) * pxPerDay;
-      const label = thMon()[cur.getMonth()] + ' ' + ((cur.getFullYear() + 543) % 100);
-      stages.push({ label, style: { position: 'absolute', left: x, top: -2, fontSize: 12, fontWeight: 700, color: 'var(--muted,#9A917F)', letterSpacing: '0.03em' } });
-      gridLines.push({ position: 'absolute', left: x, top: 16, bottom: 0, width: 1, background: 'var(--border2,#E2D9C8)', opacity: 0.5 });
-      cur.setMonth(cur.getMonth() + stepMonths);
+    const gridStyle = (x: number): CSSProperties => ({ position: 'absolute', left: x, top: 16, bottom: 0, width: 1, background: 'var(--border2,#E2D9C8)', opacity: 0.5 });
+    const labelStyle = (x: number): CSSProperties => ({ position: 'absolute', left: x, top: -2, fontSize: 12, fontWeight: 700, color: 'var(--muted,#9A917F)', letterSpacing: '0.03em' });
+    if (p.dateStep === 'week' || p.dateStep === '2week') {
+      const stepDays = p.dateStep === 'week' ? 7 : 14;
+      let dayOffset = 0, guard = 0;
+      while (dayOffset <= totalDays && guard < 300) {
+        guard++;
+        const cur = new Date(start.getTime() + dayOffset * 86400000);
+        const x = PADX + dayOffset * pxPerDay;
+        const label = cur.getDate() + ' ' + thMon()[cur.getMonth()];
+        stages.push({ label, style: labelStyle(x) });
+        gridLines.push(gridStyle(x));
+        dayOffset += stepDays;
+      }
+    } else {
+      const stepMonths = totalDays > 900 ? 6 : totalDays > 450 ? 3 : totalDays > 200 ? 2 : 1;
+      const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+      let guard = 0;
+      while (cur.getTime() <= end.getTime() && guard < 60) {
+        guard++;
+        const dayOffset = Math.round((cur.getTime() - start.getTime()) / 86400000);
+        const x = PADX + Math.max(0, dayOffset) * pxPerDay;
+        const label = thMon()[cur.getMonth()] + ' ' + ((cur.getFullYear() + 543) % 100);
+        stages.push({ label, style: labelStyle(x) });
+        gridLines.push(gridStyle(x));
+        cur.setMonth(cur.getMonth() + stepMonths);
+      }
     }
   } else {
     stages = Array.from({ length: maxGen + 1 }, (_, g) => ({

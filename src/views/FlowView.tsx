@@ -12,12 +12,13 @@ export function FlowView() {
   const flowTo = useAppStore((s) => s.flowTo);
   const flowZoom = useAppStore((s) => s.flowZoom);
   const flowXAxis = useAppStore((s) => s.flowXAxis);
+  const flowDateStep = useAppStore((s) => s.flowDateStep);
   const set = useAppStore((s) => s.set);
   const patch = useAppStore((s) => s.patch);
 
   const flow = useMemo(
-    () => computeFlow({ moves, assets, flowSel, flowRange, flowFrom, flowTo, xAxisMode: flowXAxis }),
-    [moves, assets, flowSel, flowRange, flowFrom, flowTo, flowXAxis],
+    () => computeFlow({ moves, assets, flowSel, flowRange, flowFrom, flowTo, xAxisMode: flowXAxis, dateStep: flowDateStep }),
+    [moves, assets, flowSel, flowRange, flowFrom, flowTo, flowXAxis, flowDateStep],
   );
 
   const hasDateFilter = !!(flowFrom || flowTo);
@@ -93,6 +94,25 @@ export function FlowView() {
             );
           })}
         </div>
+        {flowXAxis === 'date' && (
+          <>
+            <div style={{ width: 1, height: 26, background: '#E2D9C8' }} />
+            <div style={{ display: 'flex', background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 10, padding: 3 }}>
+              {(['month', '2week', 'week'] as const).map((step) => {
+                const active = flowDateStep === step;
+                return (
+                  <button
+                    key={step}
+                    onClick={() => set('flowDateStep', step)}
+                    style={{ padding: '6px 12px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13, fontWeight: 700, background: active ? '#5E7350' : 'transparent', color: active ? '#FBF8F1' : '#6B6356' }}
+                  >
+                    {step === 'month' ? 'ช่องละเดือน' : step === '2week' ? 'ช่องละ 2 สัปดาห์' : 'ช่องละสัปดาห์'}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
         <div style={{ width: 1, height: 26, background: '#E2D9C8' }} />
         <div style={{ display: 'flex', background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 10, padding: 3 }}>
           {(['1Y', '3Y', '5Y', 'ALL'] as FlowRange[]).map(presetBtn)}
@@ -137,15 +157,19 @@ export function FlowView() {
             {flow.nodes.map((n) => (
               <div
                 key={n.id}
+                title={n.sub}
                 onClick={() => set('flowSel', n.isSel ? null : n.id)}
                 style={n.boxStyle}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                   <div style={n.tagStyle}>{n.tag}</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--muted,#A89F8C)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n.dateLabel}</div>
+                  <div style={{ fontSize: 9.5, color: 'var(--muted,#A89F8C)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n.dateLabel}</div>
                 </div>
                 <div style={n.amountStyle}>{n.amount}</div>
-                <div style={{ ...n.subStyle, display: 'flex', alignItems: 'center', gap: 4 }}><BankBadge text={n.sub} size={14} />{n.sub}</div>
+                <div style={{ ...n.subStyle, display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                  <BankBadge text={n.sub} size={12} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{n.sub}</span>
+                </div>
               </div>
             ))}
           </div>

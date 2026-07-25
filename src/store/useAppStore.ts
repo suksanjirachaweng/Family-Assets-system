@@ -18,6 +18,7 @@ export type ThemeKey = 'earth' | 'dark' | 'navy' | 'teal';
 export type HistRange = '1Y' | '3Y' | '5Y' | 'ALL';
 export type FlowRange = '1Y' | '3Y' | '5Y' | 'ALL' | null;
 export type FlowXAxis = 'stage' | 'date';
+export type FlowDateStep = 'month' | '2week' | 'week';
 
 export interface AllocMap {
   [key: string]: number;
@@ -42,6 +43,7 @@ export interface AppState {
   alloc: AllocMap | null;
   flowRange: FlowRange;
   flowXAxis: FlowXAxis;
+  flowDateStep: FlowDateStep;
   search: string;
   histRange: HistRange;
   lineConnected: boolean;
@@ -98,6 +100,7 @@ export const useAppStore = create<AppState>((setState) => ({
   alloc: null,
   flowRange: '1Y',
   flowXAxis: 'stage',
+  flowDateStep: 'month',
   search: '',
   histRange: '1Y',
   lineConnected: true,
