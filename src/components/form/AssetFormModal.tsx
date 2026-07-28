@@ -12,6 +12,7 @@ export function AssetFormModal() {
   const toggleFormOwner = useAppStore((s) => s.toggleFormOwner);
   const upsertLocalAsset = useAppStore((s) => s.upsertLocalAsset);
   const editing = useAppStore((s) => (editingId ? s.assets.find((x) => x.id === editingId) : undefined));
+  const assets = useAppStore((s) => s.assets);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +55,7 @@ export function AssetFormModal() {
             owners={formOwners}
             onToggleOwner={toggleFormOwner}
             defaults={editing}
+            assets={assets}
           />
           {error && <div style={{ color: '#C0392B', fontSize: 13 }}>บันทึกไม่สำเร็จ: {error}</div>}
         </div>

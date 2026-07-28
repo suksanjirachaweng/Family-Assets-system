@@ -763,7 +763,7 @@ function NewDestinationModal({
         {mode === 'new' ? (
           <form onSubmit={submitNew}>
             <div style={{ padding: '18px 24px 22px', display: 'flex', flexDirection: 'column', gap: 18, maxHeight: '60vh', overflow: 'auto' }}>
-              <AssetFormFields formType={type} onTypeChange={onTypeChange} owners={owners} onToggleOwner={onToggleOwner} />
+              <AssetFormFields formType={type} onTypeChange={onTypeChange} owners={owners} onToggleOwner={onToggleOwner} assets={assets} />
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '18px 24px', borderTop: '1px solid var(--border,#E8E0CF)' }}>
               <button type="button" onClick={onCancel} style={cancelBtnStyle}>ยกเลิก</button>

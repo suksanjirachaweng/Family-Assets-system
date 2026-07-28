@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { TYPES, type Asset, type AssetType } from '@/data/types';
 import { fmt } from '@/lib/format';
-import { dvField, iAcctOptionValue } from '@/lib/assetForm';
+import { dvField, iAcctOptionValue, collectIAcctOptions } from '@/lib/assetForm';
 
 const FTYPE_ORDER: AssetType[] = ['fd', 'sav', 'fund', 'bond', 'stock', 'gold', 'land', 'other'];
 const PEOPLE = ['ชัย', 'วิวัฒน์', 'ธีรดา', 'กวิน', 'สุภาดา', 'วิภาดา', 'สุขสันต์', 'สุวิชช์'];
@@ -34,6 +34,8 @@ export interface AssetFormFieldsProps {
   onToggleOwner: (name: string) => void;
   /** Existing asset to prefill from (omit when creating a brand-new one). */
   defaults?: Asset;
+  /** All assets, used to derive the บัญชีรับดอกเบี้ย/ปันผล <select> options. */
+  assets: Asset[];
 }
 
 /**
@@ -41,8 +43,9 @@ export interface AssetFormFieldsProps {
  * "add/edit asset" modal and the "add new destination" flow in the move view.
  * Purely prop-driven — the parent owns all state and reads values back via FormData on submit.
  */
-export function AssetFormFields({ formType, onTypeChange, owners, onToggleOwner, defaults: d }: AssetFormFieldsProps) {
+export function AssetFormFields({ formType, onTypeChange, owners, onToggleOwner, defaults: d, assets }: AssetFormFieldsProps) {
   const isDeposit = formType === 'fd' || formType === 'sav' || formType === 'bond';
+  const iAcctOptions = collectIAcctOptions(assets, d?.iAcct);
 
   /** Tracked locally (the rest of the form is uncontrolled/read via FormData on submit) purely
    *  so the "มูลค่า" preview box below can update live as the user types. */
@@ -128,9 +131,7 @@ export function AssetFormFields({ formType, onTypeChange, owners, onToggleOwner,
               <Field label="วันครบกำหนด"><Input name="due" type="date" defaultValue={d?.due ?? undefined} /></Field>
               <Field label="บัญชีรับดอกเบี้ย">
                 <select name="iAcct" defaultValue={iAcctOptionValue(d?.iAcct)} style={inputStyle}>
-                  <option>ธ.กรุงเทพ 122-4423-121334 · วิวัฒน์</option>
-                  <option>ธ.ออมสิน 534-21213-2311 · ชัย·ธีรดา</option>
-                  <option>ธ.กสิกร 777-26443-28881 · ธีรดา</option>
+                  {iAcctOptions.map((v) => <option key={v} value={v}>{v}</option>)}
                 </select>
               </Field>
             </div>
@@ -151,8 +152,7 @@ export function AssetFormFields({ formType, onTypeChange, owners, onToggleOwner,
             <Field label="บัญชีรับเงินปันผล (ถ้ามี)">
               <select name="iAcct" defaultValue={iAcctOptionValue(d?.iAcct)} style={inputStyle}>
                 <option>— ไม่มี (กองทุนสะสมมูลค่า) —</option>
-                <option>ธ.ออมสิน 534-21213-2311 · ชัย·ธีรดา</option>
-                <option>ธ.กรุงเทพ 122-4423-121334 · วิวัฒน์</option>
+                {iAcctOptions.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </Field>
           </div>
@@ -190,8 +190,7 @@ export function AssetFormFields({ formType, onTypeChange, owners, onToggleOwner,
             <Field label="ราคาตลาดวันนี้ / หุ้น (บาท)"><Input name="priceNow" placeholder="35.50" defaultValue={dvField(d?.priceNow)} /></Field>
             <Field label="บัญชีรับเงินปันผล">
               <select name="iAcct" defaultValue={iAcctOptionValue(d?.iAcct)} style={inputStyle}>
-                <option>ธ.กรุงเทพ 122-4423-121334 · วิวัฒน์</option>
-                <option>ธ.ออมสิน 534-21213-2311 · ชัย·ธีรดา</option>
+                {iAcctOptions.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </Field>
           </div>

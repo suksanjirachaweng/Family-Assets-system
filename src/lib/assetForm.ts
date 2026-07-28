@@ -25,6 +25,19 @@ export function iAcctOptionValue(ia?: { bank: string; no: string; owners: string
   return ia ? `${ia.bank} ${ia.no} · ${ia.owners.join('·')}` : undefined;
 }
 
+/**
+ * The บัญชีรับดอกเบี้ย/ปันผล <select> needs an <option> matching `current` or the
+ * browser silently falls back to the first option — every real interest account
+ * must be offered, not a fixed sample list, or editing an asset shows the wrong one.
+ */
+export function collectIAcctOptions(assets: RawAsset[], current?: RawAsset['iAcct']): string[] {
+  const set = new Set<string>();
+  assets.forEach((a) => { const v = iAcctOptionValue(a.iAcct); if (v) set.add(v); });
+  const currentValue = iAcctOptionValue(current);
+  if (currentValue) set.add(currentValue);
+  return Array.from(set).sort();
+}
+
 /** Stringify a possibly-undefined numeric field for a text input's defaultValue. */
 export const dvField = (v: unknown) => (v == null ? undefined : String(v));
 
