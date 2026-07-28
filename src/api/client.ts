@@ -83,3 +83,6 @@ export const ejectLineGroup = (groupId: string) => post<{ lineGroups: LineGroup[
  *  sends a confirmation message into that group. */
 export const acceptLineGroup = (groupId: string) => post<{ lineGroups: LineGroup[]; linePendingGroups: LineGroup[] }>('acceptLineGroup', { groupId });
 export const sendTest = () => post<unknown>('sendTest', {});
+/** Records a password-gate login attempt (success or failure) to the LoginLog sheet. */
+export const logLogin = (success: boolean) =>
+  post<{ ok: boolean }>('logLogin', { success, userAgent: navigator.userAgent });

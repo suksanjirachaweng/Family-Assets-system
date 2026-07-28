@@ -1,6 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import * as api from '@/api/client';
 
 const STORAGE_KEY = 'fa-unlocked';
+
+/** Idle timeout in ms — no activity for this long and the session is treated as
+ *  expired, requiring the password again. Configurable via VITE_SESSION_TIMEOUT_MIN
+ *  (minutes); defaults to 30. */
+const SESSION_TIMEOUT_MS = (Number(import.meta.env.VITE_SESSION_TIMEOUT_MIN) || 30) * 60 * 1000;
+const ACTIVITY_EVENTS = ['mousedown', 'keydown', 'touchstart', 'scroll'] as const;
+
+const readLastActivity = (): number => {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  const ts = raw ? Number(raw) : NaN;
+  return Number.isFinite(ts) ? ts : 0;
+};
+const isSessionValid = () => Date.now() - readLastActivity() < SESSION_TIMEOUT_MS;
+const touchSession = () => localStorage.setItem(STORAGE_KEY, String(Date.now()));
 
 /**
  * Client-side password screen — blocks casual visitors from seeing family
@@ -9,19 +24,38 @@ const STORAGE_KEY = 'fa-unlocked';
  * bundled JS can find the password. It only stops accidental/casual access,
  * not a determined technical visitor. If VITE_APP_PASSWORD isn't set (e.g.
  * local dev), the gate is skipped entirely so it never blocks development.
+ *
+ * A session expires after SESSION_TIMEOUT_MS of inactivity (sliding window —
+ * any click/keypress/scroll/touch renews it), forcing the password again.
+ * Every attempt (success or failure) is logged server-side via api.logLogin.
  */
 export function PasswordGate({ children }: { children: React.ReactNode }) {
   const required = import.meta.env.VITE_APP_PASSWORD as string | undefined;
-  const [unlocked, setUnlocked] = useState(() => !required || localStorage.getItem(STORAGE_KEY) === 'true');
+  const [unlocked, setUnlocked] = useState(() => !required || isSessionValid());
   const [input, setInput] = useState('');
   const [error, setError] = useState(false);
+
+  // While unlocked: renew the session on user activity, and re-lock automatically
+  // once the idle timeout elapses (checked periodically, not just on activity).
+  useEffect(() => {
+    if (!unlocked || !required) return;
+    const renew = () => touchSession();
+    ACTIVITY_EVENTS.forEach((ev) => window.addEventListener(ev, renew, { passive: true }));
+    const check = window.setInterval(() => { if (!isSessionValid()) setUnlocked(false); }, 30_000);
+    return () => {
+      ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, renew));
+      window.clearInterval(check);
+    };
+  }, [unlocked, required]);
 
   if (unlocked) return <>{children}</>;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (input === required) {
-      localStorage.setItem(STORAGE_KEY, 'true');
+    const success = input === required;
+    if (api.isConfigured()) api.logLogin(success).catch(() => { /* logging is best-effort */ });
+    if (success) {
+      touchSession();
       setUnlocked(true);
     } else {
       setError(true);

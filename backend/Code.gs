@@ -74,6 +74,7 @@ function doPost(e) {
       case 'ejectLineGroup': result = ejectLineGroup_(payload.groupId); break;
       case 'acceptLineGroup': result = acceptLineGroup_(payload.groupId); break;
       case 'sendTest': result = sendLinePush_('🔔 ทดสอบการแจ้งเตือนจากระบบสินทรัพย์ครอบครัว'); break;
+      case 'logLogin': result = logLogin_(payload); break;
       default: throw new Error('unknown action: ' + action);
     }
     return jsonOut_({ ok: true, data: result });
@@ -315,6 +316,16 @@ function logLineWebhookIds_(events) {
     if (ev.type === 'join') handleGroupJoin_(ev.source.groupId);
     else if (ev.type === 'message') handleGroupMessage_(ev.source.groupId, ev);
   });
+}
+
+/** Records every password-gate login attempt (success or failure) to a
+ *  "LoginLog" sheet (auto-created) — a security audit trail of who accessed
+ *  the app and when, since the app has no per-user accounts to log against. */
+function logLogin_(p) {
+  var s = ss_().getSheetByName('LoginLog') || ss_().insertSheet('LoginLog');
+  if (s.getLastRow() === 0) s.appendRow(['เวลา', 'สำเร็จ', 'อุปกรณ์/เบราว์เซอร์']).getRange(1, 1, 1, 3).setFontWeight('bold');
+  s.appendRow([new Date(), p.success ? 'สำเร็จ' : 'ผิดพลาด', String(p.userAgent || '')]);
+  return { ok: true };
 }
 
 /** Bot was invited to a group: sends a one-time "waiting for approval" message
