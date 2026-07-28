@@ -45,7 +45,7 @@ export interface AssetFormFieldsProps {
  */
 export function AssetFormFields({ formType, onTypeChange, owners, onToggleOwner, defaults: d, assets }: AssetFormFieldsProps) {
   const isDeposit = formType === 'fd' || formType === 'sav' || formType === 'bond';
-  const iAcctOptions = collectIAcctOptions(assets, d?.iAcct);
+  const iAcctOptions = collectIAcctOptions(assets, owners, d?.iAcct);
 
   /** Tracked locally (the rest of the form is uncontrolled/read via FormData on submit) purely
    *  so the "มูลค่า" preview box below can update live as the user types. */

@@ -25,14 +25,32 @@ export function iAcctOptionValue(ia?: { bank: string; no: string; owners: string
   return ia ? `${ia.bank} ${ia.no} · ${ia.owners.join('·')}` : undefined;
 }
 
+/** Order-independent owner-set key, so "ชัย·วิภาดา" matches "วิภาดา·ชัย". */
+const ownerSetKey = (owners: string[]) => owners.slice().sort().join('·');
+
 /**
- * The บัญชีรับดอกเบี้ย/ปันผล <select> needs an <option> matching `current` or the
- * browser silently falls back to the first option — every real interest account
- * must be offered, not a fixed sample list, or editing an asset shows the wrong one.
+ * The บัญชีรับดอกเบี้ย/ปันผล <select> should only offer savings accounts owned by
+ * exactly the same person/people as the asset itself — a joint account for
+ * "ชัย·วิภาดา" isn't a valid interest destination for a bond owned by "ชัย" alone.
+ * Options come from real ประเภทออมทรัพย์ assets first, falling back to legacy iAcct
+ * references recorded directly on other assets (not yet backed by a savings-type
+ * asset of their own) — both filtered to the same owner set. `current` is always
+ * included even if it no longer matches, so editing never shows a blank/wrong value.
  */
-export function collectIAcctOptions(assets: RawAsset[], current?: RawAsset['iAcct']): string[] {
+export function collectIAcctOptions(assets: RawAsset[], owners: string[], current?: RawAsset['iAcct']): string[] {
+  const wantKey = ownerSetKey(owners);
   const set = new Set<string>();
-  assets.forEach((a) => { const v = iAcctOptionValue(a.iAcct); if (v) set.add(v); });
+  assets.forEach((a) => {
+    if (a.type === 'sav') {
+      if (ownerSetKey(a.owners) === wantKey) {
+        const bank = a.name.startsWith('ธ.') ? a.name : `ธ.${a.name}`;
+        set.add(`${bank} ${a.acctNo} · ${a.owners.join('·')}`);
+      }
+    } else if (a.iAcct && ownerSetKey(a.iAcct.owners) === wantKey) {
+      const v = iAcctOptionValue(a.iAcct);
+      if (v) set.add(v);
+    }
+  });
   const currentValue = iAcctOptionValue(current);
   if (currentValue) set.add(currentValue);
   return Array.from(set).sort();
