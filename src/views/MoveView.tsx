@@ -57,6 +57,22 @@ function describeNewDestination(a: Asset): string {
   return `${owners} · ${a.otherCat || 'อื่นๆ'}`;
 }
 
+/** Scales down a source asset's quantity field(s) to the fraction of its value
+ *  left after a partial move — same cost basis (navBuy/priceBuy/goldBuyPrice,
+ *  rate, due, owners, etc.), just less of it. */
+function scaleAssetForLeftover(asset: Asset, fraction: number): RawAsset {
+  const raw: RawAsset = { ...asset };
+  switch (asset.type) {
+    case 'fund': raw.units = (asset.units ?? 0) * fraction; break;
+    case 'stock': raw.shares = (asset.shares ?? 0) * fraction; break;
+    case 'gold': raw.goldBaht = (asset.goldBaht ?? 0) * fraction; break;
+    case 'land': raw.appraisal = (asset.appraisal ?? 0) * fraction; break;
+    case 'other': raw.otherVal = (asset.otherVal ?? 0) * fraction; break;
+    default: raw.amount = (asset.amount ?? 0) * fraction; // fd, sav, bond
+  }
+  return raw;
+}
+
 export function MoveView() {
   const matSel = useAppStore((s) => s.matSel);
   const moveTarget = useAppStore((s) => s.moveTarget);
@@ -244,7 +260,10 @@ export function MoveView() {
   const remain = matTotal - totalAllocated;
   const destAllOk = destDefs.every((d) => selSources.reduce((acc, s) => acc + effAlloc(d.id, s.id), 0) === d.target);
   const srcNoOver = selSources.every((s) => destDefs.reduce((acc, d) => acc + effAlloc(d.id, s.id), 0) <= s.total);
-  const allocValid = remain === 0 && destAllOk && srcNoOver;
+  // A source doesn't have to be drained completely — any amount left unallocated
+  // (remain > 0) simply stays behind in that source account (see saveMove), so
+  // only the destination-side match and the no-overdraw check gate saving.
+  const allocValid = destAllOk && srcNoOver;
 
   const iStyle: React.CSSProperties = { width: 108, padding: '6px 9px', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 8, fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13, color: 'var(--text,#2C2A23)', textAlign: 'right', background: 'var(--surface2,#fff)' };
 
@@ -257,7 +276,10 @@ export function MoveView() {
       if (income) return { id: s.id, type: 'src' as FlowNodeType, label: income.name, amount: s.total, date: getSourceDate(s.id) };
       const a = assets.find((x) => x.id === s.id);
       const label = a ? `${a.name} · ${a.owners.join(' · ')}` : s.name;
-      return { id: s.id, type: (a?.type ?? 'other') as FlowNodeType, label, amount: s.total, date: getSourceDate(s.id) };
+      // Only the portion actually allocated out — a source only partly used
+      // shouldn't show its whole balance as having moved.
+      const used = destDefs.reduce((acc, d) => acc + effAlloc(d.id, s.id), 0);
+      return { id: s.id, type: (a?.type ?? 'other') as FlowNodeType, label, amount: used, date: getSourceDate(s.id) };
     });
     const destinations: MoveLeg[] = [
       ...extraExpenses.map((e) => ({ id: e.id, type: 'exit' as FlowNodeType, label: e.name, amount: e.target, date: getDestDate(e.id) })),
@@ -280,18 +302,26 @@ export function MoveView() {
     const title = `โยกย้าย ${selSources.length} บัญชี → ${destDefs.length} ปลายทาง`;
     const detail = `รวม ${fmt(matTotal)} จาก ${srcNames} → ${dstNames}`;
     const { sources, destinations, alloc: allocOut } = buildMoveLegs();
-    // Every selected source is required (via allocValid's remain===0 check) to be
-    // fully allocated across destinations, so once the move is saved its whole
-    // balance has moved out — the source asset itself must go too, or it keeps
-    // showing a live balance the flow diagram no longer attributes to it.
-    const sourceAssetIdsToRemove = selSources
+    // A source only needs to be fully drained if everything selected from it was
+    // actually allocated — anything left over (remain > 0 for that source) stays
+    // behind as a smaller version of the same account, not deleted.
+    const EPSILON = 1; // sub-baht leftover from rounding counts as fully drained
+    const sourceOutcomes = selSources
       .filter((s) => !extraIncomes.some((e) => e.id === s.id))
-      .map((s) => s.id)
-      .filter((id) => assets.some((a) => a.id === id));
+      .map((s) => {
+        const asset = assets.find((a) => a.id === s.id);
+        if (!asset) return null;
+        const used = destDefs.reduce((acc, d) => acc + effAlloc(d.id, s.id), 0);
+        const leftover = s.total - used;
+        return leftover <= EPSILON
+          ? { kind: 'delete' as const, id: asset.id }
+          : { kind: 'shrink' as const, raw: scaleAssetForLeftover(asset, leftover / s.total) };
+      })
+      .filter((x): x is { kind: 'delete'; id: string } | { kind: 'shrink'; raw: RawAsset } => !!x);
     if (!api.isConfigured()) {
       newDestinations.forEach((nd) => upsertLocalAsset(nd.raw));
       topUps.forEach((t) => upsertLocalAsset({ ...t.asset, amount: (t.asset.amount ?? 0) + t.addAmount }));
-      sourceAssetIdsToRemove.forEach((id) => removeLocalAsset(id));
+      sourceOutcomes.forEach((o) => (o.kind === 'delete' ? removeLocalAsset(o.id) : upsertLocalAsset(o.raw)));
       setNewDestinations([]);
       setTopUps([]);
       set('alloc', {});
@@ -304,7 +334,7 @@ export function MoveView() {
       for (const nd of newDestinations) await api.createAsset(nd.raw);
       for (const t of topUps) await api.updateAsset({ ...t.asset, amount: (t.asset.amount ?? 0) + t.addAmount });
       await api.recordMove({ title, detail, amount: matTotal, sources, destinations, alloc: allocOut });
-      for (const id of sourceAssetIdsToRemove) await api.deleteAsset(id);
+      for (const o of sourceOutcomes) if (o.kind === 'delete') await api.deleteAsset(o.id); else await api.updateAsset(o.raw);
       await loadData();
       setNewDestinations([]);
       setTopUps([]);
@@ -509,7 +539,11 @@ export function MoveView() {
             </div>
           </div>
           <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: allocValid ? '#5E7350' : '#B26B4E' }}>
-            {allocValid ? '✓ จัดสรรครบถ้วน ที่มาของเงินตรงกับยอดปลายทาง' : 'ยังจัดสรรไม่ครบ — ปรับยอดให้ผลรวมต้นทาง = ยอดปลายทาง'}
+            {allocValid
+              ? remain > 0
+                ? `✓ พร้อมบันทึก — เหลือ ${fmt(remain)} ไม่ได้ย้าย จะยังคงอยู่ในบัญชีต้นทาง`
+                : '✓ จัดสรรครบถ้วน ที่มาของเงินตรงกับยอดปลายทาง'
+              : 'ปลายทางยังไม่ครบยอด หรือมีบัญชีต้นทางถูกจัดสรรเกินยอดตัวเอง — ปรับยอดให้ถูกต้อง'}
           </div>
           <button onClick={saveMove} disabled={!allocValid || saveState === 'saving'} style={{ marginTop: 12, width: '100%', background: saveState === 'saved' ? '#3C7A4A' : '#B45309', color: 'var(--on-accent,#FBF8F1)', border: 'none', borderRadius: 11, padding: 13, fontFamily: "'IBM Plex Sans Thai'", fontSize: 15, fontWeight: 600, cursor: allocValid ? 'pointer' : 'not-allowed', opacity: allocValid ? 1 : 0.55 }}>
             {saveState === 'saving' ? 'กำลังบันทึก…' : saveState === 'saved' ? '✓ บันทึกแล้ว' : saveState === 'error' ? 'บันทึกไม่สำเร็จ — ลองใหม่' : 'บันทึกการโยกย้าย'}
