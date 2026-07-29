@@ -144,6 +144,7 @@ export function MoveView() {
   };
 
   const upsertLocalAsset = useAppStore((s) => s.upsertLocalAsset);
+  const removeLocalAsset = useAppStore((s) => s.removeLocalAsset);
   const assets = useAppStore((s) => s.assets);
   const [newDestinations, setNewDestinations] = useState<{ id: string; raw: RawAsset; asset: Asset; target: number }[]>([]);
   const [showAddDest, setShowAddDest] = useState(false);
@@ -279,9 +280,18 @@ export function MoveView() {
     const title = `โยกย้าย ${selSources.length} บัญชี → ${destDefs.length} ปลายทาง`;
     const detail = `รวม ${fmt(matTotal)} จาก ${srcNames} → ${dstNames}`;
     const { sources, destinations, alloc: allocOut } = buildMoveLegs();
+    // Every selected source is required (via allocValid's remain===0 check) to be
+    // fully allocated across destinations, so once the move is saved its whole
+    // balance has moved out — the source asset itself must go too, or it keeps
+    // showing a live balance the flow diagram no longer attributes to it.
+    const sourceAssetIdsToRemove = selSources
+      .filter((s) => !extraIncomes.some((e) => e.id === s.id))
+      .map((s) => s.id)
+      .filter((id) => assets.some((a) => a.id === id));
     if (!api.isConfigured()) {
       newDestinations.forEach((nd) => upsertLocalAsset(nd.raw));
       topUps.forEach((t) => upsertLocalAsset({ ...t.asset, amount: (t.asset.amount ?? 0) + t.addAmount }));
+      sourceAssetIdsToRemove.forEach((id) => removeLocalAsset(id));
       setNewDestinations([]);
       setTopUps([]);
       set('alloc', {});
@@ -294,6 +304,7 @@ export function MoveView() {
       for (const nd of newDestinations) await api.createAsset(nd.raw);
       for (const t of topUps) await api.updateAsset({ ...t.asset, amount: (t.asset.amount ?? 0) + t.addAmount });
       await api.recordMove({ title, detail, amount: matTotal, sources, destinations, alloc: allocOut });
+      for (const id of sourceAssetIdsToRemove) await api.deleteAsset(id);
       await loadData();
       setNewDestinations([]);
       setTopUps([]);
