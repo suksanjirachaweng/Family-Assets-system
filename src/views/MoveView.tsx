@@ -271,26 +271,37 @@ export function MoveView() {
    *  from the same state already tracked for the allocation UI — nothing new to
    *  ask the user for, just persisting what's already on screen. */
   const buildMoveLegs = () => {
+    // A top-up destination reuses the existing asset's real id (so the flow
+    // graph keeps tracking it as the same account going forward). If that same
+    // account was ALSO selected as a source (its old balance feeding into its
+    // own bigger total), the source leg needs a distinct id — otherwise it
+    // collides with the destination leg on the same id and one silently
+    // clobbers the other, along with everything alloc points at it.
+    const topUpDestIds = new Set(topUps.map((t) => t.existingId));
+    const sourceLegId = (id: string) => (topUpDestIds.has(id) ? `${id}-prior` : id);
+
     const sources: MoveLeg[] = selSources.map((s) => {
-      const income = extraIncomes.find((e) => e.id === s.id);
-      if (income) return { id: s.id, type: 'src' as FlowNodeType, label: income.name, amount: s.total, date: getSourceDate(s.id) };
-      const a = assets.find((x) => x.id === s.id);
-      const label = a ? `${a.name} · ${a.owners.join(' · ')}` : s.name;
       // Only the portion actually allocated out — a source only partly used
       // shouldn't show its whole balance as having moved.
       const used = destDefs.reduce((acc, d) => acc + effAlloc(d.id, s.id), 0);
-      return { id: s.id, type: (a?.type ?? 'other') as FlowNodeType, label, amount: used, date: getSourceDate(s.id) };
+      const income = extraIncomes.find((e) => e.id === s.id);
+      if (income) return { id: s.id, type: 'src' as FlowNodeType, label: income.name, amount: used, date: getSourceDate(s.id) };
+      const a = assets.find((x) => x.id === s.id);
+      const label = a ? `${a.name} · ${a.owners.join(' · ')}` : s.name;
+      return { id: sourceLegId(s.id), type: (a?.type ?? 'other') as FlowNodeType, label, amount: used, date: getSourceDate(s.id) };
     });
     const destinations: MoveLeg[] = [
       ...extraExpenses.map((e) => ({ id: e.id, type: 'exit' as FlowNodeType, label: e.name, amount: e.target, date: getDestDate(e.id) })),
       ...newDestinations.map((nd) => ({ id: nd.id, type: nd.asset.type as FlowNodeType, label: `${nd.asset.name} · ${nd.asset.owners.join(' · ')}`, amount: nd.target, date: getDestDate(nd.id) })),
-      ...topUps.map((t) => ({ id: t.existingId, type: t.asset.type as FlowNodeType, label: `${t.asset.name} · ${t.asset.owners.join(' · ')}`, amount: t.addAmount, date: getDestDate(t.existingId) })),
+      // amount is the account's new total (existing balance + top-up), not just
+      // the increment, so the flow diagram's "current" node shows the right value.
+      ...topUps.map((t) => ({ id: t.existingId, type: t.asset.type as FlowNodeType, label: `${t.asset.name} · ${t.asset.owners.join(' · ')}`, amount: t.asset.amount + t.addAmount, date: getDestDate(t.existingId) })),
     ];
     const alloc: Record<string, number> = {};
     destDefs.forEach((d) => {
       selSources.forEach((s) => {
         const v = effAlloc(d.id, s.id);
-        if (v > 0) alloc[`${d.id}|${s.id}`] = v;
+        if (v > 0) alloc[`${d.id}|${sourceLegId(s.id)}`] = v;
       });
     });
     return { sources, destinations, alloc };
@@ -306,8 +317,15 @@ export function MoveView() {
     // actually allocated — anything left over (remain > 0 for that source) stays
     // behind as a smaller version of the same account, not deleted.
     const EPSILON = 1; // sub-baht leftover from rounding counts as fully drained
+    // An account topped up from its own existing balance is selected as BOTH a
+    // source and (via the same real id) a top-up destination in this same move —
+    // the top-up update below already gives it its correct final amount, so it
+    // must never also be deleted/shrunk here as a "drained" source, or the
+    // top-up's own write gets wiped out right after.
+    const topUpDestIds = new Set(topUps.map((t) => t.existingId));
     const sourceOutcomes = selSources
       .filter((s) => !extraIncomes.some((e) => e.id === s.id))
+      .filter((s) => !topUpDestIds.has(s.id))
       .map((s) => {
         const asset = assets.find((a) => a.id === s.id);
         if (!asset) return null;
