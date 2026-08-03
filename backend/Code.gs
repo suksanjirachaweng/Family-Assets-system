@@ -220,6 +220,34 @@ function writeExpenses_(assetId, expenses) {
   expenses.forEach(function (e) { s.appendRow([assetId, e.label, e.cat, e.amount, e.date]); });
 }
 
+var THAI_MONTHS_ = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+/** e.g. "26/6/2026" → "26 มิ.ย. 69" (Buddhist year, 2-digit) — matches the frontend's dueLabelTH. */
+function formatDateTH_(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  return d.getDate() + ' ' + THAI_MONTHS_[d.getMonth()] + ' ' + String(d.getFullYear() + 543).slice(2);
+}
+
+var NUM_EMOJI_ = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+function numEmoji_(i) { return NUM_EMOJI_[i] || (i + 1) + ')'; }
+
+/** Builds the LINE push text for a large move — one numbered line per source/
+ *  destination leg with its own amount, so it reads clearly in a chat bubble
+ *  instead of a single run-on sentence that hides which leg contributed how much. */
+function formatBigMoveMessage_(p) {
+  var lines = ['💸 การโยกย้ายเงินก้อนใหญ่', p.title || '', 'รวม ' + baht_(p.amount), '', 'จาก'];
+  (p.sources || []).forEach(function (s, i) {
+    var joiner = i < p.sources.length - 1 ? ' + ' : ' ';
+    lines.push(numEmoji_(i) + ' ' + s.label + ' ' + baht_(s.amount) + ' (ถอน ' + formatDateTH_(s.date) + ')' + joiner);
+  });
+  lines.push('ไป');
+  (p.destinations || []).forEach(function (d, i) {
+    var joiner = i < p.destinations.length - 1 ? ' + ' : ' ';
+    lines.push(numEmoji_(i) + ' ' + d.label + ' ' + baht_(d.amount) + ' (ฝาก ' + formatDateTH_(d.date) + ')' + joiner);
+  });
+  return lines.join('\n');
+}
+
 /** payload: { title, detail, amount, sources, destinations, alloc } — append to Moves
  *  (sources/destinations/alloc are stored as JSON in the "data" column so the money-flow
  *  diagram can rebuild a real graph from move history) and optionally notify a large move. */
@@ -229,7 +257,7 @@ function recordMove_(p) {
   sheet_(SHEETS.MOVES).appendRow([id, formatDate_(new Date()), p.title || 'การโยกย้ายเงิน', p.detail || '', JSON.stringify(data)]);
   var s = getSettings_();
   if (s.lineLargeMove && Number(p.amount || 0) >= 1000000) {
-    sendLinePush_('💸 การโยกย้ายเงินก้อนใหญ่\n' + (p.title || '') + '\n' + (p.detail || '') + '\nยอด ' + baht_(p.amount));
+    sendLinePush_(formatBigMoveMessage_(p));
   }
   return { id: id };
 }
