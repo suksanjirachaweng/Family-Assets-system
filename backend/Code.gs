@@ -229,23 +229,25 @@ function formatDateTH_(iso) {
   return d.getDate() + ' ' + THAI_MONTHS_[d.getMonth()] + ' ' + String(d.getFullYear() + 543).slice(2);
 }
 
+var NUM_EMOJI_ = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+function numEmoji_(i) { return NUM_EMOJI_[i] || (i + 1) + '.'; }
+
 /** Builds the LINE push text for a large move — one numbered line per source/
  *  destination leg with its own amount, so it reads clearly in a chat bubble
  *  instead of a single run-on sentence that hides which leg contributed how much.
- *  Sources (money leaving an account) are marked 🔴, destinations (money landing
- *  somewhere) are marked 🟢, so "จาก"/"ไป" are visually distinct at a glance —
+ *  "จาก"/"ไป" headers are marked 🔴/🟢 so they're visually distinct at a glance —
  *  plain LINE text messages can't color text itself, so color comes from emoji. */
 function formatBigMoveMessage_(p) {
   var lines = ['💸 การโยกย้ายเงินก้อนใหญ่', p.title || '', 'รวม ' + baht_(p.amount), '', '🔴 จาก'];
   (p.sources || []).forEach(function (s, i) {
     var joiner = i < p.sources.length - 1 ? ' + ' : ' ';
-    lines.push('🔴' + (i + 1) + '. ' + s.label + ' ' + baht_(s.amount) + ' (ถอน ' + formatDateTH_(s.date) + ')' + joiner);
+    lines.push(numEmoji_(i) + s.label + ' ' + baht_(s.amount) + ' (ถอน ' + formatDateTH_(s.date) + ')' + joiner);
   });
   lines.push('');
   lines.push('🟢 ไป');
   (p.destinations || []).forEach(function (d, i) {
     var joiner = i < p.destinations.length - 1 ? ' + ' : ' ';
-    lines.push('🟢' + (i + 1) + '. ' + d.label + ' ' + baht_(d.amount) + ' (ฝาก ' + formatDateTH_(d.date) + ')' + joiner);
+    lines.push(numEmoji_(i) + d.label + ' ' + baht_(d.amount) + ' (ฝาก ' + formatDateTH_(d.date) + ')' + joiner);
   });
   return lines.join('\n');
 }
