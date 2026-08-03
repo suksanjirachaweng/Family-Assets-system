@@ -308,7 +308,12 @@ export function MoveView() {
   };
 
   const saveMove = async () => {
-    const srcNames = selSources.map((s) => `${s.name} (ถอน ${dueLabelTH(getSourceDate(s.id))})`).join(' + ');
+    const srcNames = selSources
+      .map((s) => {
+        const used = destDefs.reduce((acc, d) => acc + effAlloc(d.id, s.id), 0);
+        return `${s.name} ${fmt(used)} (ถอน ${dueLabelTH(getSourceDate(s.id))})`;
+      })
+      .join(' + ');
     const dstNames = destDefs.map((d) => `${d.name} ${fmt(d.target)} (ฝาก ${dueLabelTH(getDestDate(d.id))})`).join(' + ');
     const title = `โยกย้าย ${selSources.length} บัญชี → ${destDefs.length} ปลายทาง`;
     const detail = `รวม ${fmt(matTotal)} จาก ${srcNames} → ${dstNames}`;
