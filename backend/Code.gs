@@ -74,6 +74,7 @@ function doPost(e) {
       case 'ejectLineGroup': result = ejectLineGroup_(payload.groupId); break;
       case 'acceptLineGroup': result = acceptLineGroup_(payload.groupId); break;
       case 'sendTest': result = sendLinePush_('🔔 ทดสอบการแจ้งเตือนจากระบบสินทรัพย์ครอบครัว'); break;
+      case 'pushToGroup': result = pushToGroup_(payload.groupId, payload.text || ''); break;
       case 'logLogin': result = logLogin_(payload); break;
       default: throw new Error('unknown action: ' + action);
     }
