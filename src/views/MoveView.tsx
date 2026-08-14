@@ -208,7 +208,8 @@ export function MoveView() {
   const [topUps, setTopUps] = useState<{ existingId: string; asset: Asset; addAmount: number }[]>([]);
   const addTopUp = (existingId: string, addAmount: number) => {
     const asset = assets.find((a) => a.id === existingId);
-    if (!asset || !addAmount) return;
+    // 0 is a valid "re-confirm at the same balance, no fresh money" top-up.
+    if (!asset || !(addAmount >= 0)) return;
     setTopUps((prev) => [...prev.filter((t) => t.existingId !== existingId), { existingId, asset, addAmount }]);
     setShowAddDest(false);
   };
@@ -818,7 +819,8 @@ function NewDestinationModal({
   const addAmountNum = Number(addAmountStr.replace(/[^0-9.]/g, ''));
 
   const submitExisting = () => {
-    if (!selectedId || !addAmountNum) return;
+    // 0 is valid — "confirm this account at its current balance, no fresh money."
+    if (!selectedId) return;
     onSubmitExisting(selectedId, addAmountNum);
   };
 
@@ -913,7 +915,7 @@ function NewDestinationModal({
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '18px 24px', borderTop: '1px solid var(--border,#E8E0CF)' }}>
               <button type="button" onClick={onCancel} style={cancelBtnStyle}>ยกเลิก</button>
-              <button type="button" onClick={submitExisting} disabled={!selectedId || !addAmountNum} style={{ ...primaryBtnStyle, opacity: !selectedId || !addAmountNum ? 0.55 : 1, cursor: !selectedId || !addAmountNum ? 'not-allowed' : 'pointer' }}>
+              <button type="button" onClick={submitExisting} disabled={!selectedId} style={{ ...primaryBtnStyle, opacity: !selectedId ? 0.55 : 1, cursor: !selectedId ? 'not-allowed' : 'pointer' }}>
                 + เพิ่มเป็นปลายทาง
               </button>
             </div>
