@@ -73,6 +73,29 @@ function scaleAssetForLeftover(asset: Asset, fraction: number): RawAsset {
   return raw;
 }
 
+/** Adds `addAmount` of fresh money to an existing account being topped up. For
+ *  fd/sav/bond/other, `amount` is the stored value itself, so it's a plain add.
+ *  For a fund, `amount` is derived (units × navNow) — decorateAssets recomputes
+ *  it from those fields every load and ignores a written `.amount` — so the
+ *  top-up has to "buy more units" at today's NAV instead, blending navBuy as a
+ *  weighted-average cost basis (the new units cost today's NAV, not the old
+ *  average) the same way a real fund purchase would. */
+function applyTopUp(asset: Asset, addAmount: number): RawAsset {
+  const raw: RawAsset = { ...asset };
+  if (asset.type === 'fund') {
+    const nav = asset.navNow ?? 0;
+    const addUnits = nav > 0 ? addAmount / nav : 0;
+    const oldUnits = asset.units ?? 0;
+    const oldNavBuy = asset.navBuy ?? nav;
+    const newUnits = oldUnits + addUnits;
+    raw.units = newUnits;
+    raw.navBuy = newUnits > 0 ? (oldUnits * oldNavBuy + addUnits * nav) / newUnits : nav;
+  } else {
+    raw.amount = (asset.amount ?? 0) + addAmount;
+  }
+  return raw;
+}
+
 export function MoveView() {
   const matSel = useAppStore((s) => s.matSel);
   const moveTarget = useAppStore((s) => s.moveTarget);
@@ -343,7 +366,7 @@ export function MoveView() {
       .filter((x): x is { kind: 'delete'; id: string } | { kind: 'shrink'; raw: RawAsset } => !!x);
     if (!api.isConfigured()) {
       newDestinations.forEach((nd) => upsertLocalAsset(nd.raw));
-      topUps.forEach((t) => upsertLocalAsset({ ...t.asset, amount: (t.asset.amount ?? 0) + t.addAmount }));
+      topUps.forEach((t) => upsertLocalAsset(applyTopUp(t.asset, t.addAmount)));
       sourceOutcomes.forEach((o) => (o.kind === 'delete' ? removeLocalAsset(o.id) : upsertLocalAsset(o.raw)));
       setNewDestinations([]);
       setTopUps([]);
@@ -355,7 +378,7 @@ export function MoveView() {
     setSaveState('saving');
     try {
       for (const nd of newDestinations) await api.createAsset(nd.raw);
-      for (const t of topUps) await api.updateAsset({ ...t.asset, amount: (t.asset.amount ?? 0) + t.addAmount });
+      for (const t of topUps) await api.updateAsset(applyTopUp(t.asset, t.addAmount));
       await api.recordMove({ title, detail, amount: matTotal, sources, destinations, alloc: allocOut });
       for (const o of sourceOutcomes) if (o.kind === 'delete') await api.deleteAsset(o.id); else await api.updateAsset(o.raw);
       await loadData();
@@ -695,7 +718,7 @@ function StepHead({ n, label, color }: { n: number; label: string; color?: strin
 const cancelBtnStyle: React.CSSProperties = { background: 'var(--surface2,#fff)', border: '1px solid var(--border2,#E2D9C8)', color: 'var(--muted2,#6B6356)', borderRadius: 11, padding: '12px 22px', fontFamily: "'IBM Plex Sans Thai'", fontSize: 14, fontWeight: 600, cursor: 'pointer' };
 const primaryBtnStyle: React.CSSProperties = { background: 'var(--accent,#5E7350)', border: 'none', color: 'var(--on-accent,#FBF8F1)', borderRadius: 11, padding: '12px 24px', fontFamily: "'IBM Plex Sans Thai'", fontSize: 14, fontWeight: 600, cursor: 'pointer' };
 
-const EXISTING_TYPES: AssetType[] = ['fd', 'sav', 'bond'];
+const EXISTING_TYPES: AssetType[] = ['fd', 'sav', 'bond', 'fund'];
 
 /** Search + pick ANY existing asset (no type or due-date restriction) to use as a source. */
 function SourcePickerModal({
@@ -842,7 +865,7 @@ function NewDestinationModal({
           <>
             <div style={{ padding: '18px 24px 22px', display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '60vh', overflow: 'auto' }}>
               <div>
-                <label style={{ display: 'block', fontSize: 12.5, color: 'var(--muted,#9A917F)', marginBottom: 6 }}>ค้นหาบัญชี (ฝากประจำ / ออมทรัพย์ / หุ้นกู้)</label>
+                <label style={{ display: 'block', fontSize: 12.5, color: 'var(--muted,#9A917F)', marginBottom: 6 }}>ค้นหาบัญชี (ฝากประจำ / ออมทรัพย์ / หุ้นกู้ / กองทุน)</label>
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
