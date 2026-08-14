@@ -312,7 +312,12 @@ export function MoveView() {
       if (income) return { id: s.id, type: 'src' as FlowNodeType, label: income.name, amount: used, date: getSourceDate(s.id) };
       const a = assets.find((x) => x.id === s.id);
       const label = a ? `${a.name} · ${a.owners.join(' · ')}` : s.name;
-      return { id: sourceLegId(s.id), type: (a?.type ?? 'other') as FlowNodeType, label, amount: used, date: getSourceDate(s.id) };
+      // A self-referencing "prior balance" leg (this same account is also the
+      // top-up destination) isn't drained through the allocation grid — its
+      // existing balance just carries forward as-is — so show its full value,
+      // not the (possibly zero) amount that happened to be routed through alloc.
+      const amount = topUpDestIds.has(s.id) ? s.total : used;
+      return { id: sourceLegId(s.id), type: (a?.type ?? 'other') as FlowNodeType, label, amount, date: getSourceDate(s.id) };
     });
     const destinations: MoveLeg[] = [
       ...extraExpenses.map((e) => ({ id: e.id, type: 'exit' as FlowNodeType, label: e.name, amount: e.target, date: getDestDate(e.id) })),
@@ -332,10 +337,16 @@ export function MoveView() {
   };
 
   const saveMove = async () => {
+    // An account topped up from its own existing balance is selected as BOTH a
+    // source and (via the same real id) a top-up destination in this same move.
+    const topUpDestIds = new Set(topUps.map((t) => t.existingId));
     const srcNames = selSources
       .map((s) => {
         const used = destDefs.reduce((acc, d) => acc + effAlloc(d.id, s.id), 0);
-        return `${s.name} ${fmt(used)} (ถอน ${dueLabelTH(getSourceDate(s.id))})`;
+        // A self-referencing "prior balance" leg isn't drained through the
+        // allocation grid — show its full value, not the (possibly zero) used amount.
+        const amount = topUpDestIds.has(s.id) ? s.total : used;
+        return `${s.name} ${fmt(amount)} (ถอน ${dueLabelTH(getSourceDate(s.id))})`;
       })
       .join(' + ');
     const dstNames = destDefs.map((d) => `${d.name} ${fmt(d.target)} (ฝาก ${dueLabelTH(getDestDate(d.id))})`).join(' + ');
@@ -346,12 +357,9 @@ export function MoveView() {
     // actually allocated — anything left over (remain > 0 for that source) stays
     // behind as a smaller version of the same account, not deleted.
     const EPSILON = 1; // sub-baht leftover from rounding counts as fully drained
-    // An account topped up from its own existing balance is selected as BOTH a
-    // source and (via the same real id) a top-up destination in this same move —
-    // the top-up update below already gives it its correct final amount, so it
-    // must never also be deleted/shrunk here as a "drained" source, or the
-    // top-up's own write gets wiped out right after.
-    const topUpDestIds = new Set(topUps.map((t) => t.existingId));
+    // The top-up update below already gives a self-referencing source its
+    // correct final amount, so it must never also be deleted/shrunk here as a
+    // "drained" source, or the top-up's own write gets wiped out right after.
     const sourceOutcomes = selSources
       .filter((s) => !extraIncomes.some((e) => e.id === s.id))
       .filter((s) => !topUpDestIds.has(s.id))
