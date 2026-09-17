@@ -201,18 +201,36 @@ function listAttachments_() {
   return byAsset;
 }
 
+/** Looks up one Assets row by id (raw, un-decorated) — used to build the
+ *  Drive filename from the owner(s) and item name at upload time. */
+function findAssetRaw_(id) {
+  var rows = listObjects_(SHEETS.ASSETS);
+  for (var i = 0; i < rows.length; i++) if (String(rows[i].id) === String(id)) return rows[i];
+  return null;
+}
+
 /** payload: { assetId, name, mimeType, dataBase64 }. Saves the file into
- *  ATTACHMENTS_FOLDER_ID on Drive and records it against the asset. */
+ *  ATTACHMENTS_FOLDER_ID on Drive — named "<เจ้าของ> · <ชื่อรายการ> · <ชื่อไฟล์เดิม>"
+ *  so files are identifiable when browsing the Drive folder directly — and
+ *  records it against the asset (the app's own attachment list still shows
+ *  just the original filename, since the asset context is already on screen). */
 function uploadAttachment_(p) {
   if (!p.assetId || !p.dataBase64) throw new Error('ต้องระบุ assetId และไฟล์');
+  var originalName = p.name || 'attachment';
+  var driveName = originalName;
+  var assetRow = findAssetRaw_(p.assetId);
+  if (assetRow) {
+    var owners = csv_(assetRow.owners).join(' · ');
+    driveName = [owners, assetRow.name, originalName].filter(Boolean).join(' · ');
+  }
   var bytes = Utilities.base64Decode(p.dataBase64);
-  var blob = Utilities.newBlob(bytes, p.mimeType || 'application/octet-stream', p.name || 'attachment');
+  var blob = Utilities.newBlob(bytes, p.mimeType || 'application/octet-stream', driveName);
   var folder = DriveApp.getFolderById(ATTACHMENTS_FOLDER_ID);
   var file = folder.createFile(blob);
   var id = 'att' + Date.now();
   var uploadedAt = new Date();
-  sheet_(SHEETS.ATTACHMENTS).appendRow([id, p.assetId, p.name || file.getName(), p.mimeType || '', file.getId(), file.getUrl(), uploadedAt]);
-  return { id: id, name: p.name || file.getName(), mimeType: p.mimeType || '', url: file.getUrl(), uploadedAt: formatDate_(uploadedAt) };
+  sheet_(SHEETS.ATTACHMENTS).appendRow([id, p.assetId, originalName, p.mimeType || '', file.getId(), file.getUrl(), uploadedAt]);
+  return { id: id, name: originalName, mimeType: p.mimeType || '', url: file.getUrl(), uploadedAt: formatDate_(uploadedAt) };
 }
 
 /** Trashes the Drive file (recoverable from Drive's trash) and removes its row. */
