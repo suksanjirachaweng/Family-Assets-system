@@ -85,6 +85,7 @@ function doPost(e) {
       case 'logLogin': result = logLogin_(payload); break;
       case 'uploadAttachment': result = uploadAttachment_(payload); break;
       case 'deleteAttachment': result = deleteAttachment_(payload.id); break;
+      case 'renameAttachment': result = renameAttachment_(payload.id, payload.name); break;
       default: throw new Error('unknown action: ' + action);
     }
     return jsonOut_({ ok: true, data: result });
@@ -210,10 +211,9 @@ function findAssetRaw_(id) {
 }
 
 /** payload: { assetId, name, mimeType, dataBase64 }. Saves the file into
- *  ATTACHMENTS_FOLDER_ID on Drive — named "<เจ้าของ> · <ชื่อรายการ> · <ชื่อไฟล์เดิม>"
- *  so files are identifiable when browsing the Drive folder directly — and
- *  records it against the asset (the app's own attachment list still shows
- *  just the original filename, since the asset context is already on screen). */
+ *  ATTACHMENTS_FOLDER_ID on Drive AND records it — both named
+ *  "<เจ้าของ> · <ชื่อรายการ> · <ชื่อไฟล์เดิม>" — so the same identifiable name
+ *  shows whether you're browsing the Drive folder directly or the app. */
 function uploadAttachment_(p) {
   if (!p.assetId || !p.dataBase64) throw new Error('ต้องระบุ assetId และไฟล์');
   var originalName = p.name || 'attachment';
@@ -229,8 +229,18 @@ function uploadAttachment_(p) {
   var file = folder.createFile(blob);
   var id = 'att' + Date.now();
   var uploadedAt = new Date();
-  sheet_(SHEETS.ATTACHMENTS).appendRow([id, p.assetId, originalName, p.mimeType || '', file.getId(), file.getUrl(), uploadedAt]);
-  return { id: id, name: originalName, mimeType: p.mimeType || '', url: file.getUrl(), uploadedAt: formatDate_(uploadedAt) };
+  sheet_(SHEETS.ATTACHMENTS).appendRow([id, p.assetId, driveName, p.mimeType || '', file.getId(), file.getUrl(), uploadedAt]);
+  return { id: id, name: driveName, mimeType: p.mimeType || '', url: file.getUrl(), uploadedAt: formatDate_(uploadedAt) };
+}
+
+/** Fixes up the displayed name of an attachment already on record (e.g. one
+ *  uploaded before uploadAttachment_ started combining owner/asset/filename)
+ *  without touching the Drive file itself. */
+function renameAttachment_(id, name) {
+  var row = findRow_(SHEETS.ATTACHMENTS, id);
+  if (row < 0) throw new Error('ไม่พบไฟล์แนบ id=' + id);
+  sheet_(SHEETS.ATTACHMENTS).getRange(row, ATTACHMENT_HEADERS.indexOf('name') + 1).setValue(name);
+  return { id: id, name: name };
 }
 
 /** Trashes the Drive file (recoverable from Drive's trash) and removes its row. */
