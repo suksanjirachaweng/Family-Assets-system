@@ -14,6 +14,32 @@ const ICON_BY_MIME = (mime: string): { glyph: string; color: string } => {
   return { glyph: '📎', color: '#8A8270' };
 };
 
+/** Drive "view" URLs (…/file/d/<id>/view) aren't directly embeddable as <img src> —
+ *  this undocumented-but-widely-used thumbnail endpoint is, and needs no extra
+ *  Drive API scope beyond what viewing the file in Drive already requires. */
+const driveThumbnailUrl = (url: string): string | null => {
+  const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? `https://drive.google.com/thumbnail?id=${m[1]}&sz=w160-h160` : null;
+};
+
+/** Shows an image attachment's thumbnail, falling back to the generic file
+ *  icon if the thumbnail fails to load (e.g. viewer lacks Drive access yet). */
+function AttachmentThumb({ att, icon }: { att: Attachment; icon: { glyph: string; color: string } }) {
+  const [failed, setFailed] = useState(false);
+  const thumb = !failed && att.mimeType.startsWith('image/') ? driveThumbnailUrl(att.url) : null;
+  if (thumb) {
+    return (
+      <img
+        src={thumb}
+        alt={att.name}
+        onError={() => setFailed(true)}
+        style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0, background: 'var(--inset,#F1EDE2)' }}
+      />
+    );
+  }
+  return <span style={{ fontSize: 18, flexShrink: 0 }}>{icon.glyph}</span>;
+}
+
 /** Strips the "data:<mime>;base64," prefix FileReader adds, leaving raw base64. */
 const readAsBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -109,7 +135,7 @@ export function AttachmentPanel({ a }: { a: Asset }) {
             const icon = ICON_BY_MIME(att.mimeType);
             return (
               <div key={att.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 2px', borderTop: '1px solid var(--border,#EFE8D9)' }}>
-                <span style={{ fontSize: 18, flexShrink: 0 }}>{icon.glyph}</span>
+                <AttachmentThumb att={att} icon={icon} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{att.name}</div>
                   <div style={{ fontSize: 12, color: 'var(--muted,#9A917F)' }}>{att.uploadedAt ? dueLabelTH(att.uploadedAt) : ''}</div>
