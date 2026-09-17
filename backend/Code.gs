@@ -12,7 +12,13 @@
  *   6) รัน installTriggers()  → ตั้งเวลาแจ้งเตือนรายวัน
  */
 
-var SHEETS = { ASSETS: 'Assets', EXPENSES: 'Expenses', MOVES: 'Moves', SETTINGS: 'Settings' };
+var SHEETS = { ASSETS: 'Assets', EXPENSES: 'Expenses', MOVES: 'Moves', SETTINGS: 'Settings', ATTACHMENTS: 'Attachments' };
+
+/** Google Drive folder every attachment upload is saved into (see AttachmentPanel
+ *  on the frontend). The web app's execution identity ("Execute as: Me") must
+ *  have write access to this folder — files inherit its sharing, so viewers who
+ *  can already open the folder can open the file link with no extra sharing step. */
+var ATTACHMENTS_FOLDER_ID = '1gyj1e2jbrWdYKthproY_pNaI6iyilZxV';
 
 var ASSET_HEADERS = [
   'id', 'type', 'name', 'owners', 'acctNo', 'amount', 'rate', 'due',
@@ -22,6 +28,7 @@ var ASSET_HEADERS = [
   'goldBuyPrice' // added later — must stay last; see migrateAddGoldBuyPrice()
 ];
 var EXPENSE_HEADERS = ['assetId', 'label', 'cat', 'amount', 'date'];
+var ATTACHMENT_HEADERS = ['id', 'assetId', 'name', 'mimeType', 'driveFileId', 'url', 'uploadedAt'];
 var MOVE_HEADERS = ['id', 'date', 'title', 'detail', 'data'];
 var SETTING_HEADERS = ['key', 'value'];
 
@@ -76,6 +83,8 @@ function doPost(e) {
       case 'sendTest': result = sendLinePush_('🔔 ทดสอบการแจ้งเตือนจากระบบสินทรัพย์ครอบครัว'); break;
       case 'pushToGroup': result = pushToGroup_(payload.groupId, payload.text || ''); break;
       case 'logLogin': result = logLogin_(payload); break;
+      case 'uploadAttachment': result = uploadAttachment_(payload); break;
+      case 'deleteAttachment': result = deleteAttachment_(payload.id); break;
       default: throw new Error('unknown action: ' + action);
     }
     return jsonOut_({ ok: true, data: result });
@@ -121,7 +130,7 @@ function csv_(v) { return String(v == null ? '' : v).split('·').map(function (x
 function num_(v) { return v === '' || v == null ? null : Number(v); }
 
 /** Convert a raw Assets row into the nested shape the frontend expects. */
-function rowToAsset_(o, expensesByAsset) {
+function rowToAsset_(o, expensesByAsset, attachmentsByAsset) {
   var a = {
     id: String(o.id),
     type: o.type,
@@ -142,6 +151,8 @@ function rowToAsset_(o, expensesByAsset) {
   if (o.iAcctNo) a.iAcct = { bank: o.iAcctBank, no: String(o.iAcctNo), owners: csv_(o.iAcctOwners) };
   var ex = expensesByAsset[a.id];
   if (ex && ex.length) a.expenses = ex;
+  var att = attachmentsByAsset[a.id];
+  if (att && att.length) a.attachments = att;
   return a;
 }
 
@@ -168,7 +179,50 @@ function listAssets_() {
     var k = String(e.assetId);
     (byAsset[k] = byAsset[k] || []).push({ label: e.label, cat: e.cat, amount: Number(e.amount), date: formatDate_(e.date) });
   });
-  return listObjects_(SHEETS.ASSETS).map(function (o) { return rowToAsset_(o, byAsset); });
+  var attachmentsByAsset = listAttachments_();
+  return listObjects_(SHEETS.ASSETS).map(function (o) { return rowToAsset_(o, byAsset, attachmentsByAsset); });
+}
+
+/** Reads the Attachments sheet, grouped by assetId — {id, name, mimeType, url,
+ *  uploadedAt} per file (driveFileId is a backend-only detail, not sent to the
+ *  frontend). */
+function listAttachments_() {
+  var byAsset = {};
+  listObjects_(SHEETS.ATTACHMENTS).forEach(function (r) {
+    var k = String(r.assetId);
+    (byAsset[k] = byAsset[k] || []).push({
+      id: String(r.id),
+      name: r.name,
+      mimeType: r.mimeType,
+      url: r.url,
+      uploadedAt: formatDate_(r.uploadedAt)
+    });
+  });
+  return byAsset;
+}
+
+/** payload: { assetId, name, mimeType, dataBase64 }. Saves the file into
+ *  ATTACHMENTS_FOLDER_ID on Drive and records it against the asset. */
+function uploadAttachment_(p) {
+  if (!p.assetId || !p.dataBase64) throw new Error('ต้องระบุ assetId และไฟล์');
+  var bytes = Utilities.base64Decode(p.dataBase64);
+  var blob = Utilities.newBlob(bytes, p.mimeType || 'application/octet-stream', p.name || 'attachment');
+  var folder = DriveApp.getFolderById(ATTACHMENTS_FOLDER_ID);
+  var file = folder.createFile(blob);
+  var id = 'att' + Date.now();
+  var uploadedAt = new Date();
+  sheet_(SHEETS.ATTACHMENTS).appendRow([id, p.assetId, p.name || file.getName(), p.mimeType || '', file.getId(), file.getUrl(), uploadedAt]);
+  return { id: id, name: p.name || file.getName(), mimeType: p.mimeType || '', url: file.getUrl(), uploadedAt: formatDate_(uploadedAt) };
+}
+
+/** Trashes the Drive file (recoverable from Drive's trash) and removes its row. */
+function deleteAttachment_(id) {
+  var row = findRow_(SHEETS.ATTACHMENTS, id);
+  if (row < 0) return { id: id };
+  var driveFileId = sheet_(SHEETS.ATTACHMENTS).getRange(row, ATTACHMENT_HEADERS.indexOf('driveFileId') + 1).getValue();
+  try { if (driveFileId) DriveApp.getFileById(driveFileId).setTrashed(true); } catch (e) { /* file already gone — still remove the row */ }
+  sheet_(SHEETS.ATTACHMENTS).deleteRow(row);
+  return { id: id };
 }
 
 function formatDate_(v) {
@@ -685,6 +739,7 @@ function setup() {
   ensureSheet_(ss, SHEETS.EXPENSES, EXPENSE_HEADERS);
   ensureSheet_(ss, SHEETS.MOVES, MOVE_HEADERS);
   ensureSheet_(ss, SHEETS.SETTINGS, SETTING_HEADERS);
+  ensureSheet_(ss, SHEETS.ATTACHMENTS, ATTACHMENT_HEADERS);
   saveSettings_(DEFAULT_SETTINGS);
   seedData_(); // defined in seed.gs
   Logger.log('setup เสร็จแล้ว — ลองรัน listAssets_() หรือเปิด Sheet ดูได้เลย');
@@ -712,6 +767,16 @@ function migrateAddMoveData() {
   var col = s.getLastColumn() + 1;
   s.getRange(1, col).setValue('data').setFontWeight('bold');
   Logger.log('เพิ่มคอลัมน์ data แล้ว ที่คอลัมน์ ' + col);
+}
+
+/** One-time migration for a Sheet that's already live: creates the Attachments
+ *  sheet (file uploads linked to assets, saved into ATTACHMENTS_FOLDER_ID on
+ *  Drive) without touching any existing sheet. Run once from the Apps Script
+ *  editor after pasting this updated Code.gs, then redeploy. */
+function migrateAddAttachmentsSheet() {
+  if (ss_().getSheetByName(SHEETS.ATTACHMENTS)) { Logger.log('มีชีต Attachments อยู่แล้ว'); return; }
+  ensureSheet_(ss_(), SHEETS.ATTACHMENTS, ATTACHMENT_HEADERS);
+  Logger.log('สร้างชีต Attachments แล้ว');
 }
 
 /** One-time cleanup: deletes every row of sample/seed data from Assets,

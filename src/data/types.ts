@@ -21,6 +21,15 @@ export interface ExpenseEntry {
   date: string;
 }
 
+/** A file (image/PDF/Excel/Word/...) attached to an asset, stored in Google Drive. */
+export interface Attachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  url: string;
+  uploadedAt: string;
+}
+
 /** Raw asset record as authored in the prototype dataset. */
 export interface RawAsset {
   id: string;
@@ -35,6 +44,7 @@ export interface RawAsset {
   receiving?: boolean;
   iAcct?: InterestAcct;
   expenses?: ExpenseEntry[];
+  attachments?: Attachment[];
   // fund
   units?: number;
   navBuy?: number;

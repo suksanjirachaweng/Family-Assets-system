@@ -4,6 +4,7 @@ import type { Asset } from '@/data/types';
 import { netInterest } from '@/lib/assets';
 import { fmt, dueLabelTH, daysLeft, GOLD_PRICE_PER_BAHT, WHT_RATE } from '@/lib/format';
 import { ExpenseLedger } from '@/components/detail/ExpenseLedger';
+import { AttachmentPanel } from '@/components/detail/AttachmentPanel';
 import { BankBadge } from '@/components/common/BankBadge';
 import * as api from '@/api/client';
 
@@ -151,6 +152,7 @@ export function DetailView() {
           {a.type === 'land' && <LandPanel a={a} />}
           {a.type === 'other' && <OtherPanel a={a} />}
           {!!(a.expenses && a.expenses.length) && <ExpenseLedger a={a} />}
+          <AttachmentPanel a={a} />
 
           {/* timeline */}
           <div style={{ marginTop: 24 }}>

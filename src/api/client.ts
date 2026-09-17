@@ -1,4 +1,4 @@
-import type { RawAsset, MoveLeg } from '@/data/types';
+import type { RawAsset, MoveLeg, Attachment } from '@/data/types';
 
 /**
  * API client for the Google Apps Script backend.
@@ -86,3 +86,9 @@ export const sendTest = () => post<unknown>('sendTest', {});
 /** Records a password-gate login attempt (success or failure) to the LoginLog sheet. */
 export const logLogin = (success: boolean) =>
   post<{ ok: boolean }>('logLogin', { success, userAgent: navigator.userAgent });
+/** Uploads a file to the shared Google Drive folder and links it to an asset.
+ *  `dataBase64` is the file's raw bytes, base64-encoded (no "data:...;base64," prefix). */
+export const uploadAttachment = (assetId: string, name: string, mimeType: string, dataBase64: string) =>
+  post<Attachment>('uploadAttachment', { assetId, name, mimeType, dataBase64 });
+/** Deletes an attachment's Drive file and its record. */
+export const deleteAttachment = (id: string) => post<{ id: string }>('deleteAttachment', { id });
