@@ -19,6 +19,9 @@ const ICON_BY_MIME = (mime: string): { glyph: string; color: string } => {
  *  Drive API scope beyond what viewing the file in Drive already requires. */
 const driveThumbnailUrl = (url: string): string | null => {
   const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  // w160 is the largest size this endpoint serves without the viewer being
+  // signed in to a Drive-authorized Google account — anything bigger (tested
+  // up to w320) silently fails to load for an anonymous/unauthenticated viewer.
   return m ? `https://drive.google.com/thumbnail?id=${m[1]}&sz=w160-h160` : null;
 };
 
@@ -33,11 +36,15 @@ function AttachmentThumb({ att, icon }: { att: Attachment; icon: { glyph: string
         src={thumb}
         alt={att.name}
         onError={() => setFailed(true)}
-        style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0, background: 'var(--inset,#F1EDE2)' }}
+        style={{ width: 128, height: 128, borderRadius: 12, objectFit: 'cover', flexShrink: 0, background: 'var(--inset,#F1EDE2)' }}
       />
     );
   }
-  return <span style={{ fontSize: 18, flexShrink: 0 }}>{icon.glyph}</span>;
+  return (
+    <span style={{ width: 128, height: 128, borderRadius: 12, background: icon.color + '1A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 46, flexShrink: 0 }}>
+      {icon.glyph}
+    </span>
+  );
 }
 
 /** Strips the "data:<mime>;base64," prefix FileReader adds, leaving raw base64. */
