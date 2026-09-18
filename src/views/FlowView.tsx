@@ -131,7 +131,9 @@ export function FlowView() {
               <div key={i} style={z.bandStyle} />
             ))}
             {flow.zones.map((z, i) => (
-              <div key={'zl' + i} style={z.labelStyle}>{z.label}</div>
+              <div key={'zl' + i} style={z.labelWrapStyle}>
+                <span style={z.labelPillStyle}>{z.label}</span>
+              </div>
             ))}
             {flow.stages.map((st, i) => (
               <div key={i} style={st.style}>{st.label}</div>

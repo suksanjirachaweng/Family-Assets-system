@@ -116,7 +116,7 @@ export interface FlowNodeVM {
 export interface FlowLinkVM { d: string; color: string; dash: string; tx: number; ty: number }
 export interface LegendVM { label: string; dotStyle: CSSProperties }
 export interface StageVM { label: string; style: CSSProperties }
-export interface ZoneVM { label: string; bandStyle: CSSProperties; labelStyle: CSSProperties }
+export interface ZoneVM { label: string; bandStyle: CSSProperties; labelWrapStyle: CSSProperties; labelPillStyle: CSSProperties }
 
 export interface FlowResult {
   nodes: FlowNodeVM[];
@@ -249,21 +249,27 @@ export function computeFlow(p: FlowParams): FlowResult {
     if (!arr) { arr = []; nodesByZone.set(z, arr); }
     arr.push(n);
   });
-  const ownerRank = (name: string) => { const i = KNOWN_OWNERS.indexOf(name); return i < 0 ? KNOWN_OWNERS.length : i; };
+  // Joint-owner zones ("ชัย · วิภาดา") sort ahead of single-owner zones, then
+  // alphabetically within each group — the "no owner" zone always leads.
   const zoneOrder = [...nodesByZone.keys()].sort((a, b) => {
     if (a === '') return -1;
     if (b === '') return 1;
-    const ra = Math.min(...a.split('·').map(ownerRank));
-    const rb = Math.min(...b.split('·').map(ownerRank));
-    return ra !== rb ? ra - rb : a.localeCompare(b);
+    const aJoint = a.includes('·'), bJoint = b.includes('·');
+    if (aJoint !== bJoint) return aJoint ? -1 : 1;
+    return a.localeCompare(b);
   });
 
   // Within each zone, the same "average of children's y" trick as before —
   // but scoped to that zone's own subgraph, then the whole zone is offset
   // down by every earlier zone's height so zones stack as non-overlapping bands.
+  // Band rendering (bandStyle/labelStyle) is deferred until after the 2D
+  // collision-avoidance pass below has settled every node's final y, so a
+  // zone whose content got pushed down still gets a band tall enough to
+  // contain it instead of bleeding into the next zone's territory.
   let zoneCursorY = 0;
   const yPos: Record<string, number> = {};
-  const zones: ZoneVM[] = [];
+  const zoneTopOf: Record<string, number> = {};
+  const zoneColorOf: Record<string, string> = {};
   const ZONE_GAP = 22;
   zoneOrder.forEach((z) => {
     const zNodes = nodesByZone.get(z)!;
@@ -320,22 +326,10 @@ export function computeFlow(p: FlowParams): FlowResult {
     zNodes.forEach((n) => { if (localY[n.id] == null) { localY[n.id] = localCursor * ROWH; localCursor++; } });
 
     const zoneTop = zoneCursorY;
+    zoneTopOf[z] = zoneTop;
+    zoneColorOf[z] = z ? ownerColor(z.split('·')[0]) : '#9AA0A6';
     zNodes.forEach((n) => { yPos[n.id] = zoneTop + localY[n.id]; });
     const zoneHeight = Math.max(ROWH, localCursor * ROWH);
-    const zoneColor = z ? ownerColor(z.split('·')[0]) : '#9AA0A6';
-    zones.push({
-      label: z ? z.split('·').join(' · ') : 'ไม่มีเจ้าของ / รายได้จากภายนอก',
-      bandStyle: {
-        position: 'absolute', left: 0, right: 0, top: zoneTop + PADY - ZONE_GAP / 2, height: zoneHeight + ZONE_GAP,
-        background: mixHex(zoneColor, '#FFFFFF', 0.92), borderTop: '1px solid ' + mixHex(zoneColor, '#FFFFFF', 0.75),
-        pointerEvents: 'none',
-      },
-      labelStyle: {
-        position: 'absolute', left: 8, top: zoneTop + PADY - ZONE_GAP / 2 + 4,
-        fontSize: 11, fontWeight: 700, color: mixHex(zoneColor, '#000000', 0.25), letterSpacing: '0.02em',
-        background: mixHex(zoneColor, '#FFFFFF', 0.8), padding: '2px 8px', borderRadius: 6, pointerEvents: 'none',
-      },
-    });
     zoneCursorY += zoneHeight + ZONE_GAP;
   });
 
@@ -375,7 +369,11 @@ export function computeFlow(p: FlowParams): FlowResult {
   // push any node down past whatever it would otherwise overlap. Works the
   // same regardless of x-axis mode (stage columns or real dates), unlike the
   // old per-generation-column-only spacing which never accounted for two
-  // different branches landing at the same pixel in date mode.
+  // different branches landing at the same pixel in date mode. Scoped to
+  // same-zone pairs only — cross-zone spacing is already guaranteed by the
+  // zone offsets above, and letting a coincidental same-x/y match with a
+  // NEIGHBORING zone's node push this one around would visually misfile it
+  // into the wrong owner's band.
   const ordered = [...nodes].sort((a, b) => a.x - b.x || a.y - b.y);
   const placed: typeof nodes = [];
   ordered.forEach((n) => {
@@ -383,6 +381,7 @@ export function computeFlow(p: FlowParams): FlowResult {
     while (shifted) {
       shifted = false;
       for (const other of placed) {
+        if (zoneOf[n.id] !== zoneOf[other.id]) continue;
         const xOverlap = n.x < other.x + other.w + NODE_GAP && n.x + n.w + NODE_GAP > other.x;
         const yOverlap = n.y < other.y + other.h + NODE_GAP && n.y + n.h + NODE_GAP > other.y;
         if (xOverlap && yOverlap) { n.y = other.y + other.h + NODE_GAP; shifted = true; }
@@ -393,6 +392,42 @@ export function computeFlow(p: FlowParams): FlowResult {
 
   let maxY = 0;
   nodes.forEach((n) => { if (n.y + n.h > maxY) maxY = n.y + n.h; });
+
+  // Build the zone bands from each zone's ACTUAL node extent now that
+  // collision-avoidance has settled — a zone whose content needed extra
+  // push-down room still gets a band tall enough to contain it.
+  const zoneMaxBottom: Record<string, number> = {};
+  nodes.forEach((n) => {
+    const z = zoneOf[n.id];
+    const bottom = n.y + n.h;
+    if (zoneMaxBottom[z] == null || bottom > zoneMaxBottom[z]) zoneMaxBottom[z] = bottom;
+  });
+  const zones: ZoneVM[] = zoneOrder.map((z) => {
+    const zoneTop = zoneTopOf[z];
+    const zoneColor = zoneColorOf[z];
+    const bandTop = zoneTop + PADY - ZONE_GAP / 2;
+    const bandBottom = (zoneMaxBottom[z] ?? zoneTop + ROWH) + ZONE_GAP / 2;
+    return {
+      label: z ? z.split('·').join(' · ') : 'ไม่มีเจ้าของ / รายได้จากภายนอก',
+      bandStyle: {
+        position: 'absolute', left: 0, right: 0, top: bandTop, height: bandBottom - bandTop,
+        background: mixHex(zoneColor, '#FFFFFF', 0.92), borderTop: '1px solid ' + mixHex(zoneColor, '#FFFFFF', 0.75),
+        pointerEvents: 'none',
+      },
+      // The pill itself is position:sticky so it stays onscreen at the left
+      // edge of the scroll viewport no matter how far the diagram is panned
+      // horizontally; the wrapper just anchors it to the right vertical band
+      // and sits above node boxes (z-index) so a box never covers it.
+      labelWrapStyle: {
+        position: 'absolute', left: 0, right: 0, top: bandTop + 4, pointerEvents: 'none', zIndex: 3,
+      },
+      labelPillStyle: {
+        position: 'sticky', left: 8, display: 'inline-block',
+        fontSize: 11, fontWeight: 700, color: mixHex(zoneColor, '#000000', 0.25), letterSpacing: '0.02em',
+        background: mixHex(zoneColor, '#FFFFFF', 0.8), padding: '2px 8px', borderRadius: 6, pointerEvents: 'none',
+      },
+    };
+  });
 
   const nodeMap: Record<string, (typeof nodes)[number]> = {};
   nodes.forEach((n) => { nodeMap[n.id] = n; });
