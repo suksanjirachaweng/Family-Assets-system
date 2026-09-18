@@ -127,6 +127,12 @@ export function FlowView() {
       <div className="fa-scroll" style={{ background: 'var(--surface,#FBF8F1)', border: '1px solid var(--border,#E8E0CF)', borderRadius: 16, padding: 18, overflow: 'auto' }}>
         <div style={{ display: 'inline-block' }}>
           <div style={{ position: 'relative', width: flow.flowW, height: flow.flowH, zoom: flowZoom }}>
+            {flow.zones.map((z, i) => (
+              <div key={i} style={z.bandStyle} />
+            ))}
+            {flow.zones.map((z, i) => (
+              <div key={'zl' + i} style={z.labelStyle}>{z.label}</div>
+            ))}
             {flow.stages.map((st, i) => (
               <div key={i} style={st.style}>{st.label}</div>
             ))}

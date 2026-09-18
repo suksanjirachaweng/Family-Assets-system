@@ -42,6 +42,20 @@ const ownerOf = (lbl: string) => {
 
 const KNOWN_OWNERS_SET = new Set(KNOWN_OWNERS);
 
+/** The trailing run of "· owner" segments, sorted + joined — same detection
+ *  splitLabelParts uses, but as a stable key so "สุขสันต์ · ธีรดา" and
+ *  "ธีรดา · สุขสันต์" land in the same zone regardless of listed order. Empty
+ *  string means "no recognized owner" (external income, etc.) — its own zone. */
+function ownerZoneKey(label: string): string {
+  const segs = String(label).split(' · ');
+  let ownerStart = segs.length;
+  for (let i = segs.length - 1; i >= 0; i--) {
+    if (KNOWN_OWNERS_SET.has(segs[i].trim())) ownerStart = i;
+    else break;
+  }
+  return segs.slice(ownerStart).map((s) => s.trim()).sort().join('·');
+}
+
 /** Splits a "name · owner · owner" label into plain-text segments and owner
  *  segments (the trailing run of parts that match a known family owner),
  *  so each owner's name can be rendered in its own color + bold instead of
@@ -97,12 +111,14 @@ export interface FlowNodeVM {
 export interface FlowLinkVM { d: string; color: string; dash: string; tx: number; ty: number }
 export interface LegendVM { label: string; dotStyle: CSSProperties }
 export interface StageVM { label: string; style: CSSProperties }
+export interface ZoneVM { label: string; bandStyle: CSSProperties; labelStyle: CSSProperties }
 
 export interface FlowResult {
   nodes: FlowNodeVM[];
   links: FlowLinkVM[];
   stages: StageVM[];
   gridLines: CSSProperties[];
+  zones: ZoneVM[];
   ownerLegend: LegendVM[];
   typeLegend: LegendVM[];
   ownerOptions: string[];
@@ -118,7 +134,7 @@ export interface FlowResult {
 }
 
 const EMPTY_FLOW: FlowResult = {
-  nodes: [], links: [], stages: [], gridLines: [], ownerLegend: [], typeLegend: [], ownerOptions: [],
+  nodes: [], links: [], stages: [], gridLines: [], zones: [], ownerLegend: [], typeLegend: [], ownerOptions: [],
   flowW: 0, flowH: 0, treeCount: 0, nodeTotal: 0, minDate: '', maxDate: '',
   selLabel: '', fromVal: '', toVal: '',
 };
@@ -195,21 +211,80 @@ export function computeFlow(p: FlowParams): FlowResult {
   activeGraphNodes.forEach((n) => calcGen(n.id));
   const maxGen = Math.max(0, ...activeGraphNodes.map((n) => genMemo[n.id]));
 
-  let cursor = 0;
-  const yPos: Record<string, number> = {};
-  const dfsY = (id: string, stack?: string[]): number => {
-    if (yPos[id] != null) return yPos[id];
-    if (stack && stack.indexOf(id) >= 0) { const y = cursor * ROWH; cursor++; return (yPos[id] = y); }
-    const ch = childrenOf[id];
-    if (!ch.length) { const y = cursor * ROWH; cursor++; return (yPos[id] = y); }
-    const s2 = (stack || []).concat(id);
-    let s = 0;
-    ch.forEach((c) => { s += dfsY(c, s2); });
-    return (yPos[id] = s / ch.length);
-  };
   const roots = activeGraphNodes.filter((n) => parentsOf[n.id].length === 0);
-  roots.forEach((r) => dfsY(r.id));
-  activeGraphNodes.forEach((n) => { if (yPos[n.id] == null) { yPos[n.id] = cursor * ROWH; cursor++; } });
+
+  // Group nodes into owner "zones" — each node's zone is its own owner (or
+  // owner-combo), independent of what zone its parent/children fall in, so a
+  // move that changes hands (e.g. a joint account's balance moving to a
+  // single owner's new one) simply draws a normal edge across zone bands
+  // rather than needing the two ends to agree on one zone.
+  const zoneOf: Record<string, string> = {};
+  activeGraphNodes.forEach((n) => { zoneOf[n.id] = ownerZoneKey(n.label); });
+  const nodesByZone = new Map<string, typeof activeGraphNodes>();
+  activeGraphNodes.forEach((n) => {
+    const z = zoneOf[n.id];
+    let arr = nodesByZone.get(z);
+    if (!arr) { arr = []; nodesByZone.set(z, arr); }
+    arr.push(n);
+  });
+  const ownerRank = (name: string) => { const i = KNOWN_OWNERS.indexOf(name); return i < 0 ? KNOWN_OWNERS.length : i; };
+  const zoneOrder = [...nodesByZone.keys()].sort((a, b) => {
+    if (a === '') return -1;
+    if (b === '') return 1;
+    const ra = Math.min(...a.split('·').map(ownerRank));
+    const rb = Math.min(...b.split('·').map(ownerRank));
+    return ra !== rb ? ra - rb : a.localeCompare(b);
+  });
+
+  // Within each zone, the same "average of children's y" trick as before —
+  // but scoped to that zone's own subgraph, then the whole zone is offset
+  // down by every earlier zone's height so zones stack as non-overlapping bands.
+  let zoneCursorY = 0;
+  const yPos: Record<string, number> = {};
+  const zones: ZoneVM[] = [];
+  const ZONE_GAP = 22;
+  zoneOrder.forEach((z) => {
+    const zNodes = nodesByZone.get(z)!;
+    const childrenInZone: Record<string, string[]> = {}, parentsInZone: Record<string, string[]> = {};
+    zNodes.forEach((n) => {
+      childrenInZone[n.id] = childrenOf[n.id].filter((cid) => zoneOf[cid] === z);
+      parentsInZone[n.id] = parentsOf[n.id].filter((pid) => zoneOf[pid] === z);
+    });
+    let localCursor = 0;
+    const localY: Record<string, number> = {};
+    const dfsLocal = (id: string, stack?: string[]): number => {
+      if (localY[id] != null) return localY[id];
+      if (stack && stack.indexOf(id) >= 0) { const y = localCursor * ROWH; localCursor++; return (localY[id] = y); }
+      const ch = childrenInZone[id];
+      if (!ch.length) { const y = localCursor * ROWH; localCursor++; return (localY[id] = y); }
+      const s2 = (stack || []).concat(id);
+      let s = 0;
+      ch.forEach((c) => { s += dfsLocal(c, s2); });
+      return (localY[id] = s / ch.length);
+    };
+    const localRoots = zNodes.filter((n) => parentsInZone[n.id].length === 0);
+    localRoots.forEach((r) => dfsLocal(r.id));
+    zNodes.forEach((n) => { if (localY[n.id] == null) { localY[n.id] = localCursor * ROWH; localCursor++; } });
+
+    const zoneTop = zoneCursorY;
+    zNodes.forEach((n) => { yPos[n.id] = zoneTop + localY[n.id]; });
+    const zoneHeight = Math.max(ROWH, localCursor * ROWH);
+    const zoneColor = z ? ownerColor(z.split('·')[0]) : '#9AA0A6';
+    zones.push({
+      label: z ? z.split('·').join(' · ') : 'ไม่มีเจ้าของ / รายได้จากภายนอก',
+      bandStyle: {
+        position: 'absolute', left: 0, right: 0, top: zoneTop + PADY - ZONE_GAP / 2, height: zoneHeight + ZONE_GAP,
+        background: mixHex(zoneColor, '#FFFFFF', 0.92), borderTop: '1px solid ' + mixHex(zoneColor, '#FFFFFF', 0.75),
+        pointerEvents: 'none',
+      },
+      labelStyle: {
+        position: 'absolute', left: 8, top: zoneTop + PADY - ZONE_GAP / 2 + 4,
+        fontSize: 11, fontWeight: 700, color: mixHex(zoneColor, '#000000', 0.25), letterSpacing: '0.02em',
+        background: mixHex(zoneColor, '#FFFFFF', 0.8), padding: '2px 8px', borderRadius: 6, pointerEvents: 'none',
+      },
+    });
+    zoneCursorY += zoneHeight + ZONE_GAP;
+  });
 
   const xOf = (n: { id: string; date: string }) =>
     p.xAxisMode === 'date'
@@ -373,6 +448,7 @@ export function computeFlow(p: FlowParams): FlowResult {
     links: linkVMs,
     stages,
     gridLines,
+    zones,
     ownerLegend,
     typeLegend,
     ownerOptions,
