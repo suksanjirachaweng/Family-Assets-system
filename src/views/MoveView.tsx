@@ -287,7 +287,10 @@ export function MoveView() {
   // A source doesn't have to be drained completely — any amount left unallocated
   // (remain > 0) simply stays behind in that source account (see saveMove), so
   // only the destination-side match and the no-overdraw check gate saving.
-  const allocValid = destAllOk && srcNoOver;
+  // But .every() on an empty destDefs/selSources array is vacuously true, so
+  // without an explicit length check a move with nothing on one side (or both)
+  // would still pass and silently save a no-op/garbage move record.
+  const allocValid = destDefs.length > 0 && selSources.length > 0 && destAllOk && srcNoOver;
 
   const iStyle: React.CSSProperties = { width: 108, padding: '6px 9px', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 8, fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13, color: 'var(--text,#2C2A23)', textAlign: 'right', background: 'var(--surface2,#fff)' };
 
@@ -598,7 +601,11 @@ export function MoveView() {
               ? remain > 0
                 ? `✓ พร้อมบันทึก — เหลือ ${fmt(remain)} ไม่ได้ย้าย จะยังคงอยู่ในบัญชีต้นทาง`
                 : '✓ จัดสรรครบถ้วน ที่มาของเงินตรงกับยอดปลายทาง'
-              : 'ปลายทางยังไม่ครบยอด หรือมีบัญชีต้นทางถูกจัดสรรเกินยอดตัวเอง — ปรับยอดให้ถูกต้อง'}
+              : selSources.length === 0
+                ? 'ยังไม่ได้เลือกรายการต้นทาง — เลือกอย่างน้อย 1 รายการ'
+                : destDefs.length === 0
+                  ? 'ยังไม่ได้เพิ่มรายการปลายทาง — เพิ่มอย่างน้อย 1 รายการ'
+                  : 'ปลายทางยังไม่ครบยอด หรือมีบัญชีต้นทางถูกจัดสรรเกินยอดตัวเอง — ปรับยอดให้ถูกต้อง'}
           </div>
           <button onClick={saveMove} disabled={!allocValid || saveState === 'saving'} style={{ marginTop: 12, width: '100%', background: saveState === 'saved' ? '#3C7A4A' : '#B45309', color: 'var(--on-accent,#FBF8F1)', border: 'none', borderRadius: 11, padding: 13, fontFamily: "'IBM Plex Sans Thai'", fontSize: 15, fontWeight: 600, cursor: allocValid ? 'pointer' : 'not-allowed', opacity: allocValid ? 1 : 0.55 }}>
             {saveState === 'saving' ? 'กำลังบันทึก…' : saveState === 'saved' ? '✓ บันทึกแล้ว' : saveState === 'error' ? 'บันทึกไม่สำเร็จ — ลองใหม่' : 'บันทึกการโยกย้าย'}
