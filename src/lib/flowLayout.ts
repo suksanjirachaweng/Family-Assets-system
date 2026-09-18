@@ -220,6 +220,23 @@ export function computeFlow(p: FlowParams): FlowResult {
   // rather than needing the two ends to agree on one zone.
   const zoneOf: Record<string, string> = {};
   activeGraphNodes.forEach((n) => { zoneOf[n.id] = ownerZoneKey(n.label); });
+
+  // Unowned source money (interest, external income) has no zone of its own —
+  // instead of stranding it in a separate "no owner" band, it joins the zone
+  // of whatever it flows into. Resolve highest-generation nodes first so a
+  // multi-hop chain of unowned nodes still inherits the eventual owner.
+  const byGenDesc = [...activeGraphNodes].sort((a, b) => genMemo[b.id] - genMemo[a.id]);
+  byGenDesc.forEach((n) => {
+    if (zoneOf[n.id] !== '') return;
+    const childZones = childrenOf[n.id].map((cid) => zoneOf[cid]).filter((z) => z !== '');
+    if (!childZones.length) return;
+    const counts = new Map<string, number>();
+    childZones.forEach((z) => counts.set(z, (counts.get(z) || 0) + 1));
+    let best = childZones[0], bestCount = 0;
+    counts.forEach((cnt, z) => { if (cnt > bestCount) { bestCount = cnt; best = z; } });
+    zoneOf[n.id] = best;
+  });
+
   const nodesByZone = new Map<string, typeof activeGraphNodes>();
   activeGraphNodes.forEach((n) => {
     const z = zoneOf[n.id];
