@@ -80,7 +80,6 @@ export function buildRawAssetFromForm(f: FormData, type: RawAsset['type'], owner
     a.navBuy = numField(f.get('navBuy'));
     a.navNow = numField(f.get('navNow'));
     a.iAcct = parseIAcctOption(strField(f.get('iAcct')));
-    a.due = null;
   } else if (type === 'gold') {
     a.goldBaht = numField(f.get('goldBaht'));
     a.goldBuyPrice = numField(f.get('goldBuyPrice'));

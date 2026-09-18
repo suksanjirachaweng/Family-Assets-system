@@ -156,6 +156,7 @@ export function AssetFormFields({ formType, onTypeChange, owners, onToggleOwner,
               </select>
             </Field>
           </div>
+          <Field label="วันครบกำหนด/โรลรอบถัดไป (ถ้ามี)"><Input name="due" type="date" defaultValue={d?.due ?? undefined} /></Field>
           <div style={{ fontSize: 12.5, color: 'var(--muted,#9A917F)' }}>เมื่อขาย/ไถ่ถอน: บันทึกจำนวนหน่วยที่ขาย และ NAV ขณะขาย — ทำได้จากหน้ารายละเอียดกองทุน</div>
         </div>
       )}
