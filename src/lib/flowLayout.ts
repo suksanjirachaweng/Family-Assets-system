@@ -24,8 +24,13 @@ const ASSET_TAG: Record<string, string> = {
   stock: 'หุ้นสามัญ', gold: 'ทองคำ', land: 'อสังหาฯ',
 };
 
+/** Fill/border hue for "new money" nodes (external income, interest — money
+ *  that isn't coming from an existing tracked account) — matches the app's
+ *  own accent green so it reads as a positive, incoming amount at a glance. */
+const NEW_MONEY_COLOR = '#5E7350';
+
 const colorOf = (t: FlowNodeType): string =>
-  t === 'src' ? '#3C4A33'
+  t === 'src' ? NEW_MONEY_COLOR
     : (t === 'exit' || t === 'merge') ? '#A89A7C'
       : t === 'expense' ? '#B26B4E'
         : (TYPES as Record<string, { color: string }>)[t] ? (TYPES as Record<string, { color: string }>)[t].color : '#8A7E8E';
@@ -252,10 +257,14 @@ export function computeFlow(p: FlowParams): FlowResult {
     const isSrc = n.type === 'src';
     const dashed = n.type === 'exit' || n.type === 'merge' || n.type === 'expense';
     const hasOwner = !!owner && !isSrc && !dashed;
-    const c = hasOwner ? ownerColor(owner) : (n.type === 'expense' ? '#B26B4E' : '#9AA0A6');
+    // "New money" (external income/interest, not moved from an existing tracked
+    // account) gets its own green identity — fill + border — instead of the
+    // neutral gray other un-owned nodes use, so it reads as distinctly "new."
+    const c = hasOwner ? ownerColor(owner) : isSrc ? NEW_MONEY_COLOR : (n.type === 'expense' ? '#B26B4E' : '#9AA0A6');
     const isSel = sel === n.id;
     const borderC = mixHex(c, '#000000', 0.18);
     const typeC = colorOf(n.type);
+    const bg = isSrc ? mixHex(NEW_MONEY_COLOR, '#FFFFFF', 0.85) : '#FFFFFF';
     return {
       id: n.id,
       isSel,
@@ -268,11 +277,11 @@ export function computeFlow(p: FlowParams): FlowResult {
       subStyle: { fontSize: 9.5, color: 'var(--muted2,#6B6356)', lineHeight: 1.25 },
       boxStyle: {
         position: 'absolute', left: n.x, top: n.y, width: n.w, height: n.h, overflow: 'hidden',
-        background: '#FFFFFF', color: borderC,
+        background: bg, color: borderC,
         border: (dashed ? '1.5px dashed ' : '1.5px solid ') + borderC,
         borderRadius: 8, padding: `5px 8px 5px ${STRIP_W + 6}px`, boxSizing: 'border-box',
         boxShadow: isSrc
-          ? ('0 0 0 3px #FFFFFF, 0 0 0 4.5px ' + borderC + (isSel ? ', 0 4px 14px rgba(60,50,30,0.22)' : ''))
+          ? ('0 0 0 3px ' + bg + ', 0 0 0 4.5px ' + borderC + (isSel ? ', 0 4px 14px rgba(60,50,30,0.22)' : ''))
           : (isSel ? '0 4px 14px rgba(60,50,30,0.22)' : '0 1px 3px rgba(60,50,30,0.07)'),
         outline: isSel && !isSrc ? '2px solid ' + borderC : 'none',
         outlineOffset: 2,
