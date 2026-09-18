@@ -6,7 +6,12 @@ import { ownerColor, mixHex, KNOWN_OWNERS } from './colors';
 import type { FlowRange, FlowXAxis } from '@/store/useAppStore';
 import type { MoveRecord } from '@/api/client';
 
-const NW = 176, NH = 60, STRIP_W = 20, COLW = 220, PADX = 20, PADY = 16, ROWH = 64, NODE_GAP = 14;
+// ROWH must clear NH + NODE_GAP (74) — otherwise the collision-avoidance pass
+// below (which requires that much clearance before treating two boxes as not
+// touching) treats every legitimately-adjacent DFS row as a false collision
+// and cascades unrelated same-date nodes apart, dragging genuinely-linked
+// nodes away from the row they were deliberately placed to share.
+const NW = 176, NH = 60, STRIP_W = 20, COLW = 220, PADX = 20, PADY = 16, ROWH = 80, NODE_GAP = 14;
 type FlowDateStep = 'week' | '2week' | 'month' | '3month' | '6month' | 'year';
 const PX_PER_DAY_BY_STEP: Record<FlowDateStep, number> = {
   week: 120 / 7, '2week': 120 / 14, month: 120 / 30, '3month': 120 / 90, '6month': 120 / 180, year: 120 / 365,
@@ -267,6 +272,35 @@ export function computeFlow(p: FlowParams): FlowResult {
       childrenInZone[n.id] = childrenOf[n.id].filter((cid) => zoneOf[cid] === z);
       parentsInZone[n.id] = parentsOf[n.id].filter((pid) => zoneOf[pid] === z);
     });
+    // Group this zone's nodes into connected components (following edges in
+    // either direction) so a whole move chain — e.g. an interest leg and its
+    // principal both feeding the same destination — gets placed as one
+    // contiguous block of rows, instead of unrelated standalone assets that
+    // just happen to share the zone being interleaved in between them.
+    const compOf: Record<string, number> = {};
+    let compCount = 0;
+    zNodes.forEach((n) => {
+      if (compOf[n.id] != null) return;
+      const compId = compCount++;
+      const stack = [n.id];
+      compOf[n.id] = compId;
+      while (stack.length) {
+        const cur = stack.pop()!;
+        [...childrenInZone[cur], ...parentsInZone[cur]].forEach((nb) => {
+          if (compOf[nb] == null) { compOf[nb] = compId; stack.push(nb); }
+        });
+      }
+    });
+    // Order components by their earliest date, so the vertical grouping still
+    // roughly tracks the same left-to-right chronological flow as the x-axis.
+    const compMinDate: Record<number, string> = {};
+    zNodes.forEach((n) => {
+      const c = compOf[n.id];
+      if (compMinDate[c] == null || n.date < compMinDate[c]) compMinDate[c] = n.date;
+    });
+    const compOrder = [...new Set(zNodes.map((n) => compOf[n.id]))]
+      .sort((a, b) => (compMinDate[a] || '').localeCompare(compMinDate[b] || ''));
+
     let localCursor = 0;
     const localY: Record<string, number> = {};
     const dfsLocal = (id: string, stack?: string[]): number => {
@@ -279,8 +313,10 @@ export function computeFlow(p: FlowParams): FlowResult {
       ch.forEach((c) => { s += dfsLocal(c, s2); });
       return (localY[id] = s / ch.length);
     };
-    const localRoots = zNodes.filter((n) => parentsInZone[n.id].length === 0);
-    localRoots.forEach((r) => dfsLocal(r.id));
+    compOrder.forEach((compId) => {
+      const compRoots = zNodes.filter((n) => compOf[n.id] === compId && parentsInZone[n.id].length === 0);
+      compRoots.forEach((r) => dfsLocal(r.id));
+    });
     zNodes.forEach((n) => { if (localY[n.id] == null) { localY[n.id] = localCursor * ROWH; localCursor++; } });
 
     const zoneTop = zoneCursorY;
