@@ -314,6 +314,27 @@ export function computeFlow(p: FlowParams): FlowResult {
     type: n.type, amount: n.amount, sub: n.label, date: n.date,
   }));
 
+  // In date-axis mode, x is purely date-driven — but a move's legs are often
+  // all logged under the same date, which would stack source and destination
+  // at the same x with no visual cue for which side feeds which. Nudge each
+  // node right of every parent that would otherwise land at or past it (in
+  // gen order, so a parent's own nudge is already settled before its
+  // children are checked), so "input" always sits strictly left of "output."
+  if (p.xAxisMode === 'date') {
+    const nodeById: Record<string, (typeof nodes)[number]> = {};
+    nodes.forEach((n) => { nodeById[n.id] = n; });
+    [...nodes]
+      .sort((a, b) => genMemo[a.id] - genMemo[b.id])
+      .forEach((n) => {
+        parentsOf[n.id].forEach((pid) => {
+          const par = nodeById[pid];
+          if (!par) return;
+          const minX = par.x + par.w + NODE_GAP;
+          if (n.x < minX) n.x = minX;
+        });
+      });
+  }
+
   // General 2D collision avoidance: process left-to-right, top-to-bottom and
   // push any node down past whatever it would otherwise overlap. Works the
   // same regardless of x-axis mode (stage columns or real dates), unlike the
@@ -340,8 +361,10 @@ export function computeFlow(p: FlowParams): FlowResult {
   const nodeMap: Record<string, (typeof nodes)[number]> = {};
   nodes.forEach((n) => { nodeMap[n.id] = n; });
   const links = activeEdges;
+  let maxX = 0;
+  nodes.forEach((n) => { if (n.x + n.w > maxX) maxX = n.x + n.w; });
   const flowW = p.xAxisMode === 'date'
-    ? PADX + totalDays * pxPerDay + NW + PADX
+    ? Math.max(PADX + totalDays * pxPerDay + NW + PADX, maxX + PADX)
     : (maxGen + 1) * COLW + PADX;
   const flowH = maxY + PADY + 24;
   const nodeVMs: FlowNodeVM[] = nodes.map((n) => {
