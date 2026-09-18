@@ -44,8 +44,15 @@ export function OverviewView() {
       buckets[key] = (buckets[key] || 0) + a.amount;
     });
     const max = Math.max(...Object.values(buckets));
+    // Same order as the money-flow diagram's owner zones: joint-owner names
+    // ahead of single-owner names, alphabetical within each group — rather
+    // than sorting by amount, so the two views read consistently.
     return Object.keys(buckets)
-      .sort((x, y) => buckets[y] - buckets[x])
+      .sort((a, b) => {
+        const aJoint = a.includes('·'), bJoint = b.includes('·');
+        if (aJoint !== bJoint) return aJoint ? -1 : 1;
+        return a.localeCompare(b);
+      })
       .map((name) => ({ name, total: buckets[name], pct: (buckets[name] / max) * 100 }));
   }, [assets]);
 

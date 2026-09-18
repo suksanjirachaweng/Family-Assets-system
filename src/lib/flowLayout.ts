@@ -229,16 +229,24 @@ export function computeFlow(p: FlowParams): FlowResult {
   // Unowned source money (interest, external income) has no zone of its own —
   // instead of stranding it in a separate "no owner" band, it joins the zone
   // of whatever it flows into. Resolve highest-generation nodes first so a
-  // multi-hop chain of unowned nodes still inherits the eventual owner.
+  // multi-hop chain of unowned nodes still inherits the eventual owner. When
+  // a single source leg was split across destinations in different zones
+  // (one move funding two different owners' accounts), weigh by each
+  // destination's own amount rather than just counting edges, so the source
+  // follows the larger, more "primary" side of the split.
   const byGenDesc = [...activeGraphNodes].sort((a, b) => genMemo[b.id] - genMemo[a.id]);
   byGenDesc.forEach((n) => {
     if (zoneOf[n.id] !== '') return;
-    const childZones = childrenOf[n.id].map((cid) => zoneOf[cid]).filter((z) => z !== '');
-    if (!childZones.length) return;
-    const counts = new Map<string, number>();
-    childZones.forEach((z) => counts.set(z, (counts.get(z) || 0) + 1));
-    let best = childZones[0], bestCount = 0;
-    counts.forEach((cnt, z) => { if (cnt > bestCount) { bestCount = cnt; best = z; } });
+    const childIds = childrenOf[n.id].filter((cid) => zoneOf[cid] !== '');
+    if (!childIds.length) return;
+    const amountByZone = new Map<string, number>();
+    childIds.forEach((cid) => {
+      const z = zoneOf[cid];
+      const amt = Math.abs(Number(gmap[cid]?.amount) || 0);
+      amountByZone.set(z, (amountByZone.get(z) || 0) + amt);
+    });
+    let best = zoneOf[childIds[0]], bestAmt = -1;
+    amountByZone.forEach((amt, z) => { if (amt > bestAmt) { bestAmt = amt; best = z; } });
     zoneOf[n.id] = best;
   });
 
@@ -259,18 +267,59 @@ export function computeFlow(p: FlowParams): FlowResult {
     return a.localeCompare(b);
   });
 
+  // Each zone's current total (from the live asset list, not the flow graph's
+  // historical leg amounts — a move's "prior" source leg would otherwise
+  // double-count alongside its destination), shown after the owner name.
+  const zoneAssetTotal: Record<string, number> = {};
+  p.assets.forEach((a) => {
+    const key = [...a.owners].sort().join('·');
+    zoneAssetTotal[key] = (zoneAssetTotal[key] || 0) + a.amount;
+  });
+
+  const xOf = (n: { id: string; date: string }) =>
+    p.xAxisMode === 'date'
+      ? PADX + Math.max(0, daysBetween(minDate, n.date)) * pxPerDay
+      : genMemo[n.id] * COLW + PADX;
+
+  const xById: Record<string, number> = {};
+  activeGraphNodes.forEach((n) => { xById[n.id] = xOf(n); });
+
+  // In date-axis mode, x is purely date-driven — but a move's legs are often
+  // all logged under the same date, which would stack source and destination
+  // at the same x with no visual cue for which side feeds which. Nudge each
+  // node right of every parent that would otherwise land at or past it (in
+  // gen order, so a parent's own nudge is already settled before its
+  // children are checked), so "input" always sits strictly left of "output."
+  if (p.xAxisMode === 'date') {
+    [...activeGraphNodes]
+      .sort((a, b) => genMemo[a.id] - genMemo[b.id])
+      .forEach((n) => {
+        parentsOf[n.id].forEach((pid) => {
+          if (xById[pid] == null) return;
+          const minX = xById[pid] + NW + NODE_GAP;
+          if (xById[n.id] < minX) xById[n.id] = minX;
+        });
+      });
+  }
+
   // Within each zone, the same "average of children's y" trick as before —
-  // but scoped to that zone's own subgraph, then the whole zone is offset
-  // down by every earlier zone's height so zones stack as non-overlapping bands.
-  // Band rendering (bandStyle/labelStyle) is deferred until after the 2D
-  // collision-avoidance pass below has settled every node's final y, so a
-  // zone whose content got pushed down still gets a band tall enough to
-  // contain it instead of bleeding into the next zone's territory.
+  // scoped to that zone's own subgraph and grouped into connected components
+  // (see below). A same-zone-scoped 2D collision-avoidance pass then resolves
+  // any remaining overlaps using this zone's own LOCAL coordinates, entirely
+  // BEFORE the next zone's absolute offset is decided — so a zone whose
+  // content needed extra push-down room grows its own band instead of
+  // bleeding into the next zone's already-fixed pixel range.
   let zoneCursorY = 0;
   const yPos: Record<string, number> = {};
   const zoneTopOf: Record<string, number> = {};
+  const zoneHeightOf: Record<string, number> = {};
   const zoneColorOf: Record<string, string> = {};
   const ZONE_GAP = 22;
+  // Extra headroom reserved at the top of every zone so the sticky owner-name
+  // pill (rendered above the band's first row) never overlaps that row's own
+  // node box — without this, the label and the first box's text would occupy
+  // the same pixels once the label is drawn on top via z-index.
+  const LABEL_RESERVE = 26;
   zoneOrder.forEach((z) => {
     const zNodes = nodesByZone.get(z)!;
     const childrenInZone: Record<string, string[]> = {}, parentsInZone: Record<string, string[]> = {};
@@ -324,91 +373,58 @@ export function computeFlow(p: FlowParams): FlowResult {
       compRoots.forEach((r) => dfsLocal(r.id));
     });
     zNodes.forEach((n) => { if (localY[n.id] == null) { localY[n.id] = localCursor * ROWH; localCursor++; } });
+    zNodes.forEach((n) => { localY[n.id] += LABEL_RESERVE; });
+
+    // Resolve any remaining overlaps using this zone's own local x/y only —
+    // cross-zone spacing is handled by the cumulative zoneCursorY offset below.
+    const localOrdered = [...zNodes].sort((a, b) => xById[a.id] - xById[b.id] || localY[a.id] - localY[b.id]);
+    const localPlaced: typeof zNodes = [];
+    localOrdered.forEach((n) => {
+      let shifted = true;
+      while (shifted) {
+        shifted = false;
+        for (const other of localPlaced) {
+          const nx = xById[n.id], ox = xById[other.id];
+          const xOverlap = nx < ox + NW + NODE_GAP && nx + NW + NODE_GAP > ox;
+          const yOverlap = localY[n.id] < localY[other.id] + NH + NODE_GAP && localY[n.id] + NH + NODE_GAP > localY[other.id];
+          if (xOverlap && yOverlap) { localY[n.id] = localY[other.id] + NH + NODE_GAP; shifted = true; }
+        }
+      }
+      localPlaced.push(n);
+    });
 
     const zoneTop = zoneCursorY;
     zoneTopOf[z] = zoneTop;
     zoneColorOf[z] = z ? ownerColor(z.split('·')[0]) : '#9AA0A6';
-    zNodes.forEach((n) => { yPos[n.id] = zoneTop + localY[n.id]; });
-    const zoneHeight = Math.max(ROWH, localCursor * ROWH);
+    let zoneContentBottom = 0;
+    zNodes.forEach((n) => {
+      yPos[n.id] = zoneTop + localY[n.id];
+      if (localY[n.id] + NH > zoneContentBottom) zoneContentBottom = localY[n.id] + NH;
+    });
+    const zoneHeight = Math.max(ROWH + LABEL_RESERVE, zoneContentBottom);
+    zoneHeightOf[z] = zoneHeight;
     zoneCursorY += zoneHeight + ZONE_GAP;
   });
 
-  const xOf = (n: { id: string; date: string }) =>
-    p.xAxisMode === 'date'
-      ? PADX + Math.max(0, daysBetween(minDate, n.date)) * pxPerDay
-      : genMemo[n.id] * COLW + PADX;
-
   const nodes = activeGraphNodes.map((n) => ({
-    id: n.id, x: xOf(n), y: yPos[n.id] + PADY, w: NW,
+    id: n.id, x: xById[n.id], y: yPos[n.id] + PADY, w: NW,
     h: NH,
     type: n.type, amount: n.amount, sub: n.label, date: n.date,
   }));
 
-  // In date-axis mode, x is purely date-driven — but a move's legs are often
-  // all logged under the same date, which would stack source and destination
-  // at the same x with no visual cue for which side feeds which. Nudge each
-  // node right of every parent that would otherwise land at or past it (in
-  // gen order, so a parent's own nudge is already settled before its
-  // children are checked), so "input" always sits strictly left of "output."
-  if (p.xAxisMode === 'date') {
-    const nodeById: Record<string, (typeof nodes)[number]> = {};
-    nodes.forEach((n) => { nodeById[n.id] = n; });
-    [...nodes]
-      .sort((a, b) => genMemo[a.id] - genMemo[b.id])
-      .forEach((n) => {
-        parentsOf[n.id].forEach((pid) => {
-          const par = nodeById[pid];
-          if (!par) return;
-          const minX = par.x + par.w + NODE_GAP;
-          if (n.x < minX) n.x = minX;
-        });
-      });
-  }
-
-  // General 2D collision avoidance: process left-to-right, top-to-bottom and
-  // push any node down past whatever it would otherwise overlap. Works the
-  // same regardless of x-axis mode (stage columns or real dates), unlike the
-  // old per-generation-column-only spacing which never accounted for two
-  // different branches landing at the same pixel in date mode. Scoped to
-  // same-zone pairs only — cross-zone spacing is already guaranteed by the
-  // zone offsets above, and letting a coincidental same-x/y match with a
-  // NEIGHBORING zone's node push this one around would visually misfile it
-  // into the wrong owner's band.
-  const ordered = [...nodes].sort((a, b) => a.x - b.x || a.y - b.y);
-  const placed: typeof nodes = [];
-  ordered.forEach((n) => {
-    let shifted = true;
-    while (shifted) {
-      shifted = false;
-      for (const other of placed) {
-        if (zoneOf[n.id] !== zoneOf[other.id]) continue;
-        const xOverlap = n.x < other.x + other.w + NODE_GAP && n.x + n.w + NODE_GAP > other.x;
-        const yOverlap = n.y < other.y + other.h + NODE_GAP && n.y + n.h + NODE_GAP > other.y;
-        if (xOverlap && yOverlap) { n.y = other.y + other.h + NODE_GAP; shifted = true; }
-      }
-    }
-    placed.push(n);
-  });
-
   let maxY = 0;
   nodes.forEach((n) => { if (n.y + n.h > maxY) maxY = n.y + n.h; });
 
-  // Build the zone bands from each zone's ACTUAL node extent now that
-  // collision-avoidance has settled — a zone whose content needed extra
-  // push-down room still gets a band tall enough to contain it.
-  const zoneMaxBottom: Record<string, number> = {};
-  nodes.forEach((n) => {
-    const z = zoneOf[n.id];
-    const bottom = n.y + n.h;
-    if (zoneMaxBottom[z] == null || bottom > zoneMaxBottom[z]) zoneMaxBottom[z] = bottom;
-  });
   const zones: ZoneVM[] = zoneOrder.map((z) => {
     const zoneTop = zoneTopOf[z];
     const zoneColor = zoneColorOf[z];
     const bandTop = zoneTop + PADY - ZONE_GAP / 2;
-    const bandBottom = (zoneMaxBottom[z] ?? zoneTop + ROWH) + ZONE_GAP / 2;
+    const bandBottom = zoneTop + zoneHeightOf[z] + PADY + ZONE_GAP / 2;
+    const total = zoneAssetTotal[z];
     return {
-      label: z ? z.split('·').join(' · ') : 'ไม่มีเจ้าของ / รายได้จากภายนอก',
+      label: z
+        ? z.split('·').join(' · ') + (total != null ? ' · ' + fmt(total) : '')
+        : 'ไม่มีเจ้าของ / รายได้จากภายนอก',
       bandStyle: {
         position: 'absolute', left: 0, right: 0, top: bandTop, height: bandBottom - bandTop,
         background: mixHex(zoneColor, '#FFFFFF', 0.92), borderTop: '1px solid ' + mixHex(zoneColor, '#FFFFFF', 0.75),
