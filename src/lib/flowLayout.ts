@@ -33,6 +33,11 @@ const ASSET_TAG: Record<string, string> = {
  *  that isn't coming from an existing tracked account) — matches the app's
  *  own accent green so it reads as a positive, incoming amount at a glance. */
 const NEW_MONEY_COLOR = '#5E7350';
+/** New income that ISN'T interest (a labeled profit/gain, gift, etc.) gets a
+ *  brighter, more attention-grabbing green than the muted interest tone, so
+ *  a one-off windfall stands out distinctly from routine recurring interest.
+ *  (Deliberately not #16A34A — that's already สุวิชช์'s owner color.) */
+const NEW_INCOME_COLOR = '#22C55E';
 
 const colorOf = (t: FlowNodeType): string =>
   t === 'src' ? NEW_MONEY_COLOR
@@ -495,16 +500,20 @@ export function computeFlow(p: FlowParams): FlowResult {
   const nodeVMs: FlowNodeVM[] = nodes.map((n) => {
     const owner = ownerOf(n.sub);
     const isSrc = n.type === 'src';
+    const isInterestSrc = isSrc && n.sub.includes('ดอกเบี้ย');
+    const srcColor = isInterestSrc ? NEW_MONEY_COLOR : NEW_INCOME_COLOR;
     const dashed = n.type === 'exit' || n.type === 'merge' || n.type === 'expense';
     const hasOwner = !!owner && !isSrc && !dashed;
     // "New money" (external income/interest, not moved from an existing tracked
     // account) gets its own green identity — fill + border — instead of the
     // neutral gray other un-owned nodes use, so it reads as distinctly "new."
-    const c = hasOwner ? ownerColor(owner) : isSrc ? NEW_MONEY_COLOR : (n.type === 'expense' ? '#B26B4E' : '#9AA0A6');
+    // Non-interest new income (a one-off profit/gain) gets a brighter green
+    // than interest, so a windfall stands out from routine recurring interest.
+    const c = hasOwner ? ownerColor(owner) : isSrc ? srcColor : (n.type === 'expense' ? '#B26B4E' : '#9AA0A6');
     const isSel = sel === n.id;
     const borderC = mixHex(c, '#000000', 0.18);
-    const typeC = colorOf(n.type);
-    const bg = isSrc ? mixHex(NEW_MONEY_COLOR, '#FFFFFF', 0.85) : '#FFFFFF';
+    const typeC = isSrc ? srcColor : colorOf(n.type);
+    const bg = isSrc ? mixHex(srcColor, '#FFFFFF', 0.85) : '#FFFFFF';
     return {
       id: n.id,
       isSel,
