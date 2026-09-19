@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useAppStore, type FlowDateStep, type FlowRange } from '@/store/useAppStore';
 import { computeFlow } from '@/lib/flowLayout';
 import { findLeg } from '@/components/flow/MoveLegEditModal';
@@ -18,6 +18,15 @@ export function FlowView() {
   const set = useAppStore((s) => s.set);
   const patch = useAppStore((s) => s.patch);
   const openEditForm = useAppStore((s) => s.openEditForm);
+  // Single-click (trace) and double-click (edit) on the same box would
+  // otherwise collide — a real double-click fires its first plain click
+  // immediately, which would toggle the trace selection and re-render the
+  // whole diagram (moving every box) before the second click even lands, so
+  // the browser never sees both clicks hit the same element and no
+  // dblclick fires at all. Delay the trace action briefly and cancel it if
+  // a second click follows in time, the standard single/double-click
+  // disambiguation pattern.
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flow = useMemo(
     () => computeFlow({ moves, assets, flowSel, flowRange, flowFrom, flowTo, xAxisMode: flowXAxis, dateStep: flowDateStep, ownerFilter: flowOwnerFilter }),
@@ -155,8 +164,15 @@ export function FlowView() {
               <div
                 key={n.id}
                 title={n.sub}
-                onClick={() => set('flowSel', n.isSel ? null : n.id)}
+                onClick={() => {
+                  if (clickTimer.current) clearTimeout(clickTimer.current);
+                  clickTimer.current = setTimeout(() => {
+                    clickTimer.current = null;
+                    set('flowSel', n.isSel ? null : n.id);
+                  }, 250);
+                }}
                 onDoubleClick={() => {
+                  if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null; }
                   // A box's id maps back to a move leg (source or destination)
                   // if it's ever appeared in one — edit that leg directly. An
                   // account never involved in any move (just sitting there,
