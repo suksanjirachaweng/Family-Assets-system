@@ -536,6 +536,11 @@ export function computeFlow(p: FlowParams): FlowResult {
     const isExit = n.type === 'exit' || n.type === 'expense';
     const filled = isSrc || isExit;
     const fillColor = isSrc ? srcColor : EXIT_COLOR;
+    // A one-off windfall or an external expense is the pair most worth
+    // catching the eye — a thicker border, a more saturated fill, and an
+    // actual drop shadow (on top of the usual ring) — while routine
+    // recurring interest keeps the original, quieter treatment.
+    const emphasized = (isSrc && !isInterestSrc) || isExit;
     const dashed = n.type === 'exit' || n.type === 'merge' || n.type === 'expense';
     const hasOwner = !!owner && !isSrc && !dashed;
     // "New money" (external income/interest, not moved from an existing tracked
@@ -547,7 +552,11 @@ export function computeFlow(p: FlowParams): FlowResult {
     const isSel = sel === n.id;
     const borderC = mixHex(c, '#000000', 0.18);
     const typeC = filled ? fillColor : colorOf(n.type);
-    const bg = filled ? mixHex(fillColor, '#FFFFFF', 0.85) : '#FFFFFF';
+    const bg = filled ? mixHex(fillColor, '#FFFFFF', emphasized ? 0.68 : 0.85) : '#FFFFFF';
+    // Every box EXCEPT "ที่มา" (src) and "ออกจากพอร์ต" (exit/expense) shares
+    // one plain near-black border instead of an owner-tinted one, so those
+    // two colored categories read as the only boxes with a "special" border.
+    const boxBorderCol = filled ? borderC : '#2C2A23';
     return {
       id: n.id,
       isSel,
@@ -563,11 +572,13 @@ export function computeFlow(p: FlowParams): FlowResult {
       boxStyle: {
         position: 'absolute', left: n.x, top: n.y, width: n.w, height: n.h, overflow: 'hidden',
         background: bg, color: borderC,
-        border: (dashed ? '1.5px dashed ' : '1.5px solid ') + borderC,
+        border: (dashed ? (emphasized ? '2.5px dashed ' : '1.5px dashed ') : (emphasized ? '2.5px solid ' : '1.5px solid ')) + boxBorderCol,
         borderRadius: 8, padding: `5px 8px 5px ${STRIP_W + 6}px`, boxSizing: 'border-box',
-        boxShadow: filled
-          ? ('0 0 0 3px ' + bg + ', 0 0 0 4.5px ' + borderC + (isSel ? ', 0 4px 14px rgba(60,50,30,0.22)' : ''))
-          : (isSel ? '0 4px 14px rgba(60,50,30,0.22)' : '0 1px 3px rgba(60,50,30,0.07)'),
+        boxShadow: emphasized
+          ? ('0 0 0 3px ' + bg + ', 0 0 0 5px ' + borderC + ', 0 5px 14px ' + fillColor + '66' + (isSel ? ', 0 4px 14px rgba(60,50,30,0.22)' : ''))
+          : filled
+            ? ('0 0 0 3px ' + bg + ', 0 0 0 4.5px ' + borderC + (isSel ? ', 0 4px 14px rgba(60,50,30,0.22)' : ''))
+            : (isSel ? '0 4px 14px rgba(60,50,30,0.22)' : '0 1px 3px rgba(60,50,30,0.07)'),
         outline: isSel && !filled ? '2px solid ' + borderC : 'none',
         outlineOffset: 2,
         cursor: 'pointer',
