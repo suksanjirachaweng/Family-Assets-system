@@ -12,6 +12,7 @@ import { MoveView } from '@/views/MoveView';
 import { FlowView } from '@/views/FlowView';
 import { LineSettingsView } from '@/views/LineSettingsView';
 import { AssetFormModal } from '@/components/form/AssetFormModal';
+import { MoveLegEditModal } from '@/components/flow/MoveLegEditModal';
 import { PrintHeader } from '@/components/layout/PrintHeader';
 
 export default function App() {
@@ -76,6 +77,7 @@ export default function App() {
           </main>
 
           {showForm && <AssetFormModal />}
+          <MoveLegEditModal />
 
           <Footer />
         </>

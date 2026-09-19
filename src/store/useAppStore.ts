@@ -45,6 +45,11 @@ export interface AppState {
   flowXAxis: FlowXAxis;
   flowDateStep: FlowDateStep;
   flowOwnerFilter: string | null;
+  /** Node double-clicked in the money-flow diagram, awaiting the leg-edit
+   *  modal — carries the raw (unformatted) date/amount the flow node showed,
+   *  used to disambiguate which move's leg to edit when the same account id
+   *  appears in more than one move's history. */
+  editingFlowNode: { id: string; date: string; amount: number } | null;
   search: string;
   histRange: HistRange;
   lineConnected: boolean;
@@ -103,6 +108,7 @@ export const useAppStore = create<AppState>((setState) => ({
   flowXAxis: 'stage',
   flowDateStep: 'month',
   flowOwnerFilter: null,
+  editingFlowNode: null,
   search: '',
   histRange: '1Y',
   lineConnected: true,

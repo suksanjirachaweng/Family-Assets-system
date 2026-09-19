@@ -74,6 +74,10 @@ export const updateAsset = (a: RawAsset) => post<{ id: string }>('updateAsset', 
 export const deleteAsset = (id: string) => post<{ id: string }>('deleteAsset', { id });
 export const recordMove = (m: { title: string; detail: string; amount: number; sources?: MoveLeg[]; destinations?: MoveLeg[]; alloc?: Record<string, number> }) =>
   post<{ id: string }>('recordMove', m);
+/** Corrects an already-recorded move's legs in place (e.g. a wrong date) —
+ *  unlike recordMove, this never sends a LINE notification. */
+export const updateMove = (m: { id: string; title: string; detail: string; sources?: MoveLeg[]; destinations?: MoveLeg[]; alloc?: Record<string, number> }) =>
+  post<{ id: string }>('updateMove', m);
 export const deleteMove = (id: string) => post<{ id: string }>('deleteMove', { id });
 export const saveSettings = (s: RemoteSettings) => post<RemoteSettings>('saveSettings', s);
 /** Removes the group from both the active and pending lists AND has the bot leave

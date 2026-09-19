@@ -76,6 +76,7 @@ function doPost(e) {
       case 'updateAsset': result = updateAsset_(payload); break;
       case 'deleteAsset': result = deleteAsset_(payload.id); break;
       case 'recordMove': result = recordMove_(payload); break;
+      case 'updateMove': result = updateMove_(payload); break;
       case 'deleteMove': result = deleteMove_(payload.id); break;
       case 'saveSettings': result = saveSettings_(payload); break;
       case 'ejectLineGroup': result = ejectLineGroup_(payload.groupId); break;
@@ -346,6 +347,19 @@ function recordMove_(p) {
     sendLinePush_(formatBigMoveMessage_(p));
   }
   return { id: id };
+}
+
+/** payload: { id, title, detail, sources, destinations, alloc } — corrects an
+ *  already-recorded move IN PLACE (e.g. fixing a leg's date/amount typo)
+ *  without touching its original recorded-on date and without ever sending a
+ *  LINE notification, since this is a correction, not a new transaction. */
+function updateMove_(p) {
+  var row = findRow_(SHEETS.MOVES, p.id);
+  if (row < 0) throw new Error('ไม่พบรายการย้ายเงิน id=' + p.id);
+  var existingDate = sheet_(SHEETS.MOVES).getRange(row, 2).getValue();
+  var data = { sources: p.sources || [], destinations: p.destinations || [], alloc: p.alloc || {} };
+  sheet_(SHEETS.MOVES).getRange(row, 1, 1, 5).setValues([[p.id, existingDate, p.title || 'การโยกย้ายเงิน', p.detail || '', JSON.stringify(data)]]);
+  return { id: p.id };
 }
 
 /** Reads the Moves sheet and parses the JSON "data" column back into structured

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useAppStore, type FlowDateStep, type FlowRange } from '@/store/useAppStore';
 import { computeFlow } from '@/lib/flowLayout';
+import { findLeg } from '@/components/flow/MoveLegEditModal';
 import { BankBadge } from '@/components/common/BankBadge';
 
 export function FlowView() {
@@ -16,6 +17,7 @@ export function FlowView() {
   const flowOwnerFilter = useAppStore((s) => s.flowOwnerFilter);
   const set = useAppStore((s) => s.set);
   const patch = useAppStore((s) => s.patch);
+  const openEditForm = useAppStore((s) => s.openEditForm);
 
   const flow = useMemo(
     () => computeFlow({ moves, assets, flowSel, flowRange, flowFrom, flowTo, xAxisMode: flowXAxis, dateStep: flowDateStep, ownerFilter: flowOwnerFilter }),
@@ -154,6 +156,15 @@ export function FlowView() {
                 key={n.id}
                 title={n.sub}
                 onClick={() => set('flowSel', n.isSel ? null : n.id)}
+                onDoubleClick={() => {
+                  // A box's id maps back to a move leg (source or destination)
+                  // if it's ever appeared in one — edit that leg directly. An
+                  // account never involved in any move (just sitting there,
+                  // never moved) has no leg to edit, so fall back to the
+                  // ordinary asset editor instead.
+                  if (findLeg(moves, n.id, n.rawDate)) patch({ editingFlowNode: { id: n.id, date: n.rawDate, amount: n.rawAmount } });
+                  else if (assets.some((a) => a.id === n.id)) openEditForm(n.id);
+                }}
                 style={n.boxStyle}
               >
                 <div style={n.stripStyle}><span style={n.tagStyle}>{n.tag}</span></div>

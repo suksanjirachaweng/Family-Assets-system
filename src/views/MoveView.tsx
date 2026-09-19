@@ -294,6 +294,8 @@ export function MoveView() {
 
   const iStyle: React.CSSProperties = { width: 108, padding: '6px 9px', border: '1px solid var(--border2,#E2D9C8)', borderRadius: 8, fontFamily: "'IBM Plex Sans Thai',sans-serif", fontSize: 13, color: 'var(--text,#2C2A23)', textAlign: 'right', background: 'var(--surface2,#fff)' };
 
+  const EPSILON = 1; // sub-baht leftover from rounding counts as fully drained
+
   /** Builds the structured source/destination legs the money-flow diagram needs,
    *  from the same state already tracked for the allocation UI — nothing new to
    *  ask the user for, just persisting what's already on screen. */
@@ -305,7 +307,20 @@ export function MoveView() {
     // collides with the destination leg on the same id and one silently
     // clobbers the other, along with everything alloc points at it.
     const topUpDestIds = new Set(topUps.map((t) => t.existingId));
-    const sourceLegId = (id: string) => (topUpDestIds.has(id) ? `${id}-prior` : id);
+    // A source not fully allocated leaves a leftover balance BEHIND in that
+    // same account (see sourceOutcomes' "shrink" case in saveMove) — which
+    // updates the asset record directly, but the flow diagram only ever reads
+    // recorded move legs, so without a leg for it the diagram would draw the
+    // account as having been fully drained. Treat it the same as a top-up
+    // destination: this account is ALSO a destination of its own leftover
+    // within this same move, so its source leg needs the same "-prior" id.
+    const leftoverIds = new Set(
+      selSources
+        .filter((s) => !extraIncomes.some((e) => e.id === s.id) && !topUpDestIds.has(s.id))
+        .filter((s) => s.total - destDefs.reduce((acc, d) => acc + effAlloc(d.id, s.id), 0) > EPSILON)
+        .map((s) => s.id),
+    );
+    const sourceLegId = (id: string) => (topUpDestIds.has(id) || leftoverIds.has(id) ? `${id}-prior` : id);
 
     const sources: MoveLeg[] = selSources.map((s) => {
       // Only the portion actually allocated out — a source only partly used
@@ -322,12 +337,20 @@ export function MoveView() {
       const amount = topUpDestIds.has(s.id) ? s.total : used;
       return { id: sourceLegId(s.id), type: (a?.type ?? 'other') as FlowNodeType, label, amount, date: getSourceDate(s.id) };
     });
+    const leftoverDestinations: MoveLeg[] = [...leftoverIds].map((id) => {
+      const s = selSources.find((x) => x.id === id)!;
+      const used = destDefs.reduce((acc, d) => acc + effAlloc(d.id, id), 0);
+      const a = assets.find((x) => x.id === id);
+      const label = a ? `${a.name} · ${a.owners.join(' · ')}` : s.name;
+      return { id, type: (a?.type ?? 'other') as FlowNodeType, label, amount: s.total - used, date: getSourceDate(id) };
+    });
     const destinations: MoveLeg[] = [
       ...extraExpenses.map((e) => ({ id: e.id, type: 'exit' as FlowNodeType, label: e.name, amount: e.target, date: getDestDate(e.id) })),
       ...newDestinations.map((nd) => ({ id: nd.id, type: nd.asset.type as FlowNodeType, label: `${nd.asset.name} · ${nd.asset.owners.join(' · ')}`, amount: nd.target, date: getDestDate(nd.id) })),
       // amount is the account's new total (existing balance + top-up), not just
       // the increment, so the flow diagram's "current" node shows the right value.
       ...topUps.map((t) => ({ id: t.existingId, type: t.asset.type as FlowNodeType, label: `${t.asset.name} · ${t.asset.owners.join(' · ')}`, amount: t.asset.amount + t.addAmount, date: getDestDate(t.existingId) })),
+      ...leftoverDestinations,
     ];
     const alloc: Record<string, number> = {};
     destDefs.forEach((d) => {
@@ -335,6 +358,11 @@ export function MoveView() {
         const v = effAlloc(d.id, s.id);
         if (v > 0) alloc[`${d.id}|${sourceLegId(s.id)}`] = v;
       });
+    });
+    leftoverIds.forEach((id) => {
+      const s = selSources.find((x) => x.id === id)!;
+      const used = destDefs.reduce((acc, d) => acc + effAlloc(d.id, id), 0);
+      alloc[`${id}|${sourceLegId(id)}`] = s.total - used;
     });
     return { sources, destinations, alloc };
   };
@@ -352,14 +380,18 @@ export function MoveView() {
         return `${s.name} ${fmt(amount)} (ถอน ${dueLabelTH(getSourceDate(s.id))})`;
       })
       .join(' + ');
-    const dstNames = destDefs.map((d) => `${d.name} ${fmt(d.target)} (ฝาก ${dueLabelTH(getDestDate(d.id))})`).join(' + ');
+    const leftoverNames = selSources
+      .filter((s) => !extraIncomes.some((e) => e.id === s.id) && !topUpDestIds.has(s.id))
+      .map((s) => ({ s, leftover: s.total - destDefs.reduce((acc, d) => acc + effAlloc(d.id, s.id), 0) }))
+      .filter(({ leftover }) => leftover > EPSILON)
+      .map(({ s, leftover }) => `${s.name} ${fmt(leftover)} (คงเหลือในบัญชีเดิม)`);
+    const dstNames = [...destDefs.map((d) => `${d.name} ${fmt(d.target)} (ฝาก ${dueLabelTH(getDestDate(d.id))})`), ...leftoverNames].join(' + ');
     const title = `โยกย้าย ${selSources.length} บัญชี → ${destDefs.length} ปลายทาง`;
     const detail = `รวม ${fmt(matTotal)} จาก ${srcNames} → ${dstNames}`;
     const { sources, destinations, alloc: allocOut } = buildMoveLegs();
     // A source only needs to be fully drained if everything selected from it was
     // actually allocated — anything left over (remain > 0 for that source) stays
     // behind as a smaller version of the same account, not deleted.
-    const EPSILON = 1; // sub-baht leftover from rounding counts as fully drained
     // The top-up update below already gives a self-referencing source its
     // correct final amount, so it must never also be deleted/shrunk here as a
     // "drained" source, or the top-up's own write gets wiped out right after.
