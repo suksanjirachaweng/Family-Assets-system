@@ -377,21 +377,47 @@ export function computeFlow(p: FlowParams): FlowResult {
 
     // Resolve any remaining overlaps using this zone's own local x/y only —
     // cross-zone spacing is handled by the cumulative zoneCursorY offset below.
-    const localOrdered = [...zNodes].sort((a, b) => xById[a.id] - xById[b.id] || localY[a.id] - localY[b.id]);
-    const localPlaced: typeof zNodes = [];
-    localOrdered.forEach((n) => {
-      let shifted = true;
-      while (shifted) {
-        shifted = false;
-        for (const other of localPlaced) {
-          const nx = xById[n.id], ox = xById[other.id];
-          const xOverlap = nx < ox + NW + NODE_GAP && nx + NW + NODE_GAP > ox;
-          const yOverlap = localY[n.id] < localY[other.id] + NH + NODE_GAP && localY[n.id] + NH + NODE_GAP > localY[other.id];
-          if (xOverlap && yOverlap) { localY[n.id] = localY[other.id] + NH + NODE_GAP; shifted = true; }
+    const resolveOverlaps = () => {
+      const localOrdered = [...zNodes].sort((a, b) => xById[a.id] - xById[b.id] || localY[a.id] - localY[b.id]);
+      const localPlaced: typeof zNodes = [];
+      localOrdered.forEach((n) => {
+        let shifted = true;
+        while (shifted) {
+          shifted = false;
+          for (const other of localPlaced) {
+            const nx = xById[n.id], ox = xById[other.id];
+            const xOverlap = nx < ox + NW + NODE_GAP && nx + NW + NODE_GAP > ox;
+            const yOverlap = localY[n.id] < localY[other.id] + NH + NODE_GAP && localY[n.id] + NH + NODE_GAP > localY[other.id];
+            if (xOverlap && yOverlap) { localY[n.id] = localY[other.id] + NH + NODE_GAP; shifted = true; }
+          }
         }
-      }
-      localPlaced.push(n);
+        localPlaced.push(n);
+      });
+    };
+    resolveOverlaps();
+
+    // Re-derive a node's y from its child(ren), highest generation first —
+    // the same "parent = average of children" rule dfsLocal used, reapplied
+    // after collision-avoidance. A simple parent/child pair (e.g. an account
+    // rolled into a new one) started out aligned by that rule, but a
+    // collision with some unrelated same-date node can knock the parent off
+    // it; this pulls it back in line with where its child actually settled.
+    // Only children that belong EXCLUSIVELY to this parent count — a child
+    // with several same-zone parents (a top-up's principal + interest legs)
+    // is about to be centered between them below, and chasing that shared
+    // position would just drag every one of its parents to the same spot.
+    [...zNodes].sort((a, b) => genMemo[b.id] - genMemo[a.id]).forEach((n) => {
+      const soleKids = childrenInZone[n.id].filter((cid) => parentsInZone[cid].length === 1);
+      if (soleKids.length) localY[n.id] = soleKids.reduce((s, cid) => s + localY[cid], 0) / soleKids.length;
     });
+    // A node fed by several same-zone sources inherited its y from whichever
+    // source the DFS above happened to visit first — center it between them,
+    // matching the usual Sankey convention.
+    zNodes.forEach((n) => {
+      const pars = parentsInZone[n.id];
+      if (pars.length > 1) localY[n.id] = pars.reduce((s, pid) => s + localY[pid], 0) / pars.length;
+    });
+    resolveOverlaps();
 
     const zoneTop = zoneCursorY;
     zoneTopOf[z] = zoneTop;
