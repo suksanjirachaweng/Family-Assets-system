@@ -38,6 +38,10 @@ const NEW_MONEY_COLOR = '#5E7350';
  *  a one-off windfall stands out distinctly from routine recurring interest.
  *  (Deliberately not #16A34A — that's already สุวิชช์'s owner color.) */
 const NEW_INCOME_COLOR = '#22C55E';
+/** Money leaving the portfolio for good (an external expense/exit leg) gets
+ *  the mirror-image treatment of new money coming in — a filled red box
+ *  instead of green — so an outflow is just as visually distinct as an inflow. */
+const EXIT_COLOR = '#DC2626';
 
 const colorOf = (t: FlowNodeType): string =>
   t === 'src' ? NEW_MONEY_COLOR
@@ -107,6 +111,8 @@ export interface FlowNodeVM {
   id: string;
   isSel: boolean;
   amount: string;
+  rawAmount: number;
+  rawDate: string;
   sub: string;
   subParts: { text: string; color?: string; bold?: boolean }[];
   tag: string;
@@ -502,6 +508,12 @@ export function computeFlow(p: FlowParams): FlowResult {
     const isSrc = n.type === 'src';
     const isInterestSrc = isSrc && n.sub.includes('ดอกเบี้ย');
     const srcColor = isInterestSrc ? NEW_MONEY_COLOR : NEW_INCOME_COLOR;
+    // Money leaving the portfolio (a one-off external expense/exit leg) gets
+    // the same filled-box treatment as new money coming in, just in red
+    // instead of green, so an outflow reads as clearly as an inflow does.
+    const isExit = n.type === 'exit' || n.type === 'expense';
+    const filled = isSrc || isExit;
+    const fillColor = isSrc ? srcColor : EXIT_COLOR;
     const dashed = n.type === 'exit' || n.type === 'merge' || n.type === 'expense';
     const hasOwner = !!owner && !isSrc && !dashed;
     // "New money" (external income/interest, not moved from an existing tracked
@@ -509,15 +521,17 @@ export function computeFlow(p: FlowParams): FlowResult {
     // neutral gray other un-owned nodes use, so it reads as distinctly "new."
     // Non-interest new income (a one-off profit/gain) gets a brighter green
     // than interest, so a windfall stands out from routine recurring interest.
-    const c = hasOwner ? ownerColor(owner) : isSrc ? srcColor : (n.type === 'expense' ? '#B26B4E' : '#9AA0A6');
+    const c = hasOwner ? ownerColor(owner) : filled ? fillColor : '#9AA0A6';
     const isSel = sel === n.id;
     const borderC = mixHex(c, '#000000', 0.18);
-    const typeC = isSrc ? srcColor : colorOf(n.type);
-    const bg = isSrc ? mixHex(srcColor, '#FFFFFF', 0.85) : '#FFFFFF';
+    const typeC = filled ? fillColor : colorOf(n.type);
+    const bg = filled ? mixHex(fillColor, '#FFFFFF', 0.85) : '#FFFFFF';
     return {
       id: n.id,
       isSel,
       amount: fmt(n.amount),
+      rawAmount: n.amount,
+      rawDate: n.date,
       sub: n.sub,
       subParts: splitLabelParts(n.sub),
       tag: ASSET_TAG[n.type],
@@ -529,10 +543,10 @@ export function computeFlow(p: FlowParams): FlowResult {
         background: bg, color: borderC,
         border: (dashed ? '1.5px dashed ' : '1.5px solid ') + borderC,
         borderRadius: 8, padding: `5px 8px 5px ${STRIP_W + 6}px`, boxSizing: 'border-box',
-        boxShadow: isSrc
+        boxShadow: filled
           ? ('0 0 0 3px ' + bg + ', 0 0 0 4.5px ' + borderC + (isSel ? ', 0 4px 14px rgba(60,50,30,0.22)' : ''))
           : (isSel ? '0 4px 14px rgba(60,50,30,0.22)' : '0 1px 3px rgba(60,50,30,0.07)'),
-        outline: isSel && !isSrc ? '2px solid ' + borderC : 'none',
+        outline: isSel && !filled ? '2px solid ' + borderC : 'none',
         outlineOffset: 2,
         cursor: 'pointer',
       },
