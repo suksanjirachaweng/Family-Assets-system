@@ -314,13 +314,14 @@ export function computeFlow(p: FlowParams): FlowResult {
   const zoneTopOf: Record<string, number> = {};
   const zoneHeightOf: Record<string, number> = {};
   const zoneColorOf: Record<string, string> = {};
+  const zoneLabelColorOf: Record<string, string> = {};
   const ZONE_GAP = 22;
   // Extra headroom reserved at the top of every zone so the sticky owner-name
   // pill (rendered above the band's first row) never overlaps that row's own
   // node box — without this, the label and the first box's text would occupy
   // the same pixels once the label is drawn on top via z-index.
   const LABEL_RESERVE = 26;
-  zoneOrder.forEach((z) => {
+  zoneOrder.forEach((z, zoneIndex) => {
     const zNodes = nodesByZone.get(z)!;
     const childrenInZone: Record<string, string[]> = {}, parentsInZone: Record<string, string[]> = {};
     zNodes.forEach((n) => {
@@ -421,7 +422,17 @@ export function computeFlow(p: FlowParams): FlowResult {
 
     const zoneTop = zoneCursorY;
     zoneTopOf[z] = zoneTop;
-    zoneColorOf[z] = z ? ownerColor(z.split('·')[0]) : '#9AA0A6';
+    // The band's wash color cycles through the same well-separated hues used
+    // for individual owners, picked by this zone's POSITION in the stacked
+    // order rather than derived from its owner combo — averaging two owners'
+    // colors (e.g. "ธีรดา · วิภาดา" vs "ธีรดา · วิวัฒน์") tends to pull every
+    // combo sharing an owner toward a similar blend, so neighboring bands
+    // could still end up looking the same shade even with different owners.
+    // Cycling by index guarantees adjacent bands are never the same color.
+    // The label pill still shows the owner's own true blended color (see
+    // labelPillColor below), so identity is still visible at a glance.
+    zoneColorOf[z] = z ? ownerColor(KNOWN_OWNERS[zoneIndex % KNOWN_OWNERS.length]) : '#9AA0A6';
+    zoneLabelColorOf[z] = z ? ownerColor(z) : '#9AA0A6';
     let zoneContentBottom = 0;
     zNodes.forEach((n) => {
       yPos[n.id] = zoneTop + localY[n.id];
@@ -444,6 +455,7 @@ export function computeFlow(p: FlowParams): FlowResult {
   const zones: ZoneVM[] = zoneOrder.map((z) => {
     const zoneTop = zoneTopOf[z];
     const zoneColor = zoneColorOf[z];
+    const labelColor = zoneLabelColorOf[z];
     const bandTop = zoneTop + PADY - ZONE_GAP / 2;
     const bandBottom = zoneTop + zoneHeightOf[z] + PADY + ZONE_GAP / 2;
     const total = zoneAssetTotal[z];
@@ -465,8 +477,8 @@ export function computeFlow(p: FlowParams): FlowResult {
       },
       labelPillStyle: {
         position: 'sticky', left: 8, display: 'inline-block',
-        fontSize: 11, fontWeight: 700, color: mixHex(zoneColor, '#000000', 0.25), letterSpacing: '0.02em',
-        background: mixHex(zoneColor, '#FFFFFF', 0.8), padding: '2px 8px', borderRadius: 6, pointerEvents: 'none',
+        fontSize: 11, fontWeight: 700, color: mixHex(labelColor, '#000000', 0.25), letterSpacing: '0.02em',
+        background: mixHex(labelColor, '#FFFFFF', 0.8), padding: '2px 8px', borderRadius: 6, pointerEvents: 'none',
       },
     };
   });
