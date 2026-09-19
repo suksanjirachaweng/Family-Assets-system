@@ -261,6 +261,28 @@ export function computeFlow(p: FlowParams): FlowResult {
     zoneOf[n.id] = best;
   });
 
+  // An unowned node with nothing downstream to inherit from (an external
+  // expense/exit leg has no children — it's where the money's trail ends)
+  // instead joins the zone of whatever owned account it left FROM, so a
+  // family member's expense reads as belonging to them rather than being
+  // stranded in the generic "no owner" band. Ascending generation order so a
+  // multi-hop unowned chain resolves its upstream owner first.
+  const byGenAsc = [...activeGraphNodes].sort((a, b) => genMemo[a.id] - genMemo[b.id]);
+  byGenAsc.forEach((n) => {
+    if (zoneOf[n.id] !== '') return;
+    const parentIds = parentsOf[n.id].filter((pid) => zoneOf[pid] !== '');
+    if (!parentIds.length) return;
+    const amountByZone = new Map<string, number>();
+    parentIds.forEach((pid) => {
+      const z = zoneOf[pid];
+      const amt = Math.abs(Number(gmap[pid]?.amount) || 0);
+      amountByZone.set(z, (amountByZone.get(z) || 0) + amt);
+    });
+    let best = zoneOf[parentIds[0]], bestAmt = -1;
+    amountByZone.forEach((amt, z) => { if (amt > bestAmt) { bestAmt = amt; best = z; } });
+    zoneOf[n.id] = best;
+  });
+
   const nodesByZone = new Map<string, typeof activeGraphNodes>();
   activeGraphNodes.forEach((n) => {
     const z = zoneOf[n.id];
